@@ -1,33 +1,26 @@
 <?php
 session_start();
-require_once __DIR__ . '/db.php'; 
+require_once __DIR__ . '/db.php';
 
-// --- DARK MODE LOGIC START: HYBRID (Database untuk Login, Cookie untuk Anonim) ---
+// --- DARK MODE LOGIC START ---
 
 $is_logged_in = isset($_SESSION['user']);
-$theme_source = ''; // Untuk debugging/keterangan
+$theme_source = ''; 
 
 if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     if ($is_logged_in) {
-        // Logika Database: Toggle theme_mode di tabel users
+        // Logika Database
         $user_id = $_SESSION['user']['id']; 
-        
-        // Asumsi 'theme_mode' sudah ada di sesi dan nilainya 1 (dark) atau 0 (light)
         $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
         $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
 
-        // Update database
-        // Peringatan: Pastikan $pdo sudah terhubung di db.php
         if (isset($pdo)) {
             $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
             $update_stmt->execute([$new_db_mode, $user_id]);
-            
-            // Update sesi agar tema langsung diterapkan
             $_SESSION['user']['theme_mode'] = $new_db_mode;
         }
-        
     } else {
-        // Logika Cookie: Toggle cookie 'theme'
+        // Logika Cookie
         if (isset($_COOKIE['theme']) && $_COOKIE['theme'] === 'dark') {
             setcookie('theme', 'light', time() + (86400 * 30), '/');
         } else {
@@ -35,18 +28,15 @@ if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
         }
     }
     
-    // Redirect untuk menghilangkan parameter GET dan menerapkan tema
     header("Location: " . strtok($_SERVER['REQUEST_URI'], '?'));
     exit;
 }
 
 // 1. Tentukan Tema yang akan digunakan
 if ($is_logged_in) {
-    // Pengguna Login: Ambil dari Sesi (nilai 1 atau 0)
     $is_dark_mode = ($_SESSION['user']['theme_mode'] ?? 0) == 1;
     $theme_source = 'DB';
 } else {
-    // Pengguna Anonim: Ambil dari Cookie
     $is_dark_mode = ($_COOKIE['theme'] ?? 'light') === 'dark';
     $theme_source = 'Cookie';
 }
@@ -55,12 +45,28 @@ $theme = $is_dark_mode ? 'dark' : 'light';
 
 // --- DARK MODE LOGIC END ---
 
+// --- Helper function untuk bintang ---
+function display_stars($rating) {
+    $stars = '';
+    $full_stars = floor($rating);
+    
+    for ($i = 1; $i <= 5; $i++) {
+        if ($i <= $full_stars) {
+            $stars .= '★'; 
+        } else {
+            $stars .= '☆'; 
+        }
+    }
+    return $stars;
+}
 
-// --- Input pencarian & filter ---
+
+// --- Input pencarian, filter, dan sorting ---
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 $category_id = isset($_GET['category_id']) && $_GET['category_id'] !== '' ? intval($_GET['category_id']) : null;
 $min_price = isset($_GET['min_price']) && $_GET['min_price'] !== '' ? floatval($_GET['min_price']) : null;
 $max_price = isset($_GET['max_price']) && $_GET['max_price'] !== '' ? floatval($_GET['max_price']) : null;
+$sort_by = $_GET['sort_by'] ?? 'date_desc'; // Default sorting
 
 // --- Pagination ---
 $perPage = 6;
@@ -68,7 +74,6 @@ $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $offset = ($page - 1) * $perPage;
 
 // --- Ambil kategori ---
-// Peringatan: Pastikan $pdo sudah terhubung di db.php
 $categories = [];
 if (isset($pdo)) {
     $categories = $pdo->query('SELECT id, name FROM categories ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
@@ -80,40 +85,77 @@ $where = [];
 $params = [];
 
 if ($q) {
-    $where[] = 'title LIKE :q';
+    $where[] = 'b.title LIKE :q';
     $params[':q'] = '%' . $q . '%';
 }
 if ($category_id) {
-    $where[] = 'category_id = :cid';
+    $where[] = 'b.category_id = :cid';
     $params[':cid'] = $category_id;
 }
 if ($min_price !== null) {
-    $where[] = 'price >= :minp';
+    $where[] = 'b.price >= :minp';
     $params[':minp'] = $min_price;
 }
 if ($max_price !== null) {
-    $where[] = 'price <= :maxp';
+    $where[] = 'b.price <= :maxp';
     $params[':maxp'] = $max_price;
 }
 
 $whereSql = count($where) ? ' WHERE ' . implode(' AND ', $where) : '';
 
+// --- Logika Sorting SQL ---
+$orderBySql = 'ORDER BY b.id DESC'; // Default (date_desc)
+
+switch ($sort_by) {
+    case 'rating_desc':
+        $orderBySql = 'ORDER BY avg_rating DESC, b.id DESC';
+        break;
+    case 'price_asc':
+        $orderBySql = 'ORDER BY b.price ASC, b.id DESC';
+        break;
+    case 'price_desc':
+        $orderBySql = 'ORDER BY b.price DESC, b.id DESC';
+        break;
+    case 'title_asc':
+        $orderBySql = 'ORDER BY b.title ASC, b.id DESC';
+        break;
+    case 'date_desc':
+    default:
+        $orderBySql = 'ORDER BY b.id DESC';
+        break;
+}
+
+
 // --- Hitung total dan Ambil data buku ---
 $books = [];
 $totalBooks = 0;
 $totalPages = 1;
+
 if (isset($pdo)) {
     // Hitung total
-    $countSql = 'SELECT COUNT(*) FROM books' . $whereSql;
+    $countSql = 'SELECT COUNT(b.id) FROM books b' . $whereSql;
     $countStmt = $pdo->prepare($countSql);
     $countStmt->execute($params);
     $totalBooks = $countStmt->fetchColumn();
     $totalPages = ceil($totalBooks / $perPage);
 
-    // Ambil data buku
-    $sql = 'SELECT * FROM books' . $whereSql . ' ORDER BY id DESC LIMIT :limit OFFSET :offset';
+    // Ambil data buku DENGAN AVG RATING
+    $sql = '
+        SELECT 
+            b.*,
+            COALESCE(AVG(r.rating), 0) AS avg_rating,
+            COUNT(r.id) AS total_reviews
+        FROM books b
+        LEFT JOIN reviews r ON b.id = r.book_id
+        ' . $whereSql . '
+        GROUP BY b.id
+        ' . $orderBySql . '
+        LIMIT :limit OFFSET :offset
+    ';
+    
     $stmt = $pdo->prepare($sql);
     foreach ($params as $key => $val) {
+        if ($key === ':limit' || $key === ':offset') continue; 
         $stmt->bindValue($key, $val);
     }
     $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
@@ -122,6 +164,17 @@ if (isset($pdo)) {
     $books = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+// Function untuk mendapatkan nama yang sedang disortir
+function get_sort_name($sort_by) {
+    switch ($sort_by) {
+        case 'rating_desc': return 'Rating Tertinggi';
+        case 'price_asc': return 'Harga Terendah';
+        case 'price_desc': return 'Harga Tertinggi';
+        case 'title_asc': return 'Judul (A-Z)';
+        case 'date_desc':
+        default: return 'Terbaru';
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -140,10 +193,10 @@ body { transition: background-color 0.3s, color 0.3s; }
 .book-card:hover { transform: scale(1.02); }
 .book-image { height: 300px; width: 100%; object-fit: cover; background-color: #f8f9fa; }
 .card-body { padding: 1.5rem; display: flex; flex-direction: column; }
-.card-title { font-size: 1.25rem; margin-bottom: 1rem; }
+.card-title { font-size: 1.25rem; margin-bottom: 0.5rem; } 
 .pagination { justify-content: center; margin-top: 30px; }
 
-/* ======== DARK MODE Enhancements (KONSISTENSI DENGAN ABOUT/CONTACT) ======== */
+/* ======== DARK MODE Enhancements (KONSISTENSI & FIX INPUT TEXT) ======== */
 body.dark-mode { 
     background-color: #121212; 
     color: #f5f5f5; 
@@ -158,26 +211,33 @@ body.dark-mode footer.bg-dark {
 body.dark-mode .card { 
     background-color: #1e1e1e; 
     color: #f5f5f5; 
-    border-color: #333; /* Border card */
+    border-color: #333; 
 }
 
-/* DARK MODE for Filters/Dropdown/Inputs */
-body.dark-mode .dropdown-menu { 
-    background-color: #1e1e1e; /* Background menu dropdown */
-    border: 1px solid #333; 
-}
-body.dark-mode .form-label {
+/* FIX INPUT TEXT COLOR IN DARK MODE */
+body.dark-mode .form-label, 
+body.dark-mode .dropdown-menu {
     color: #f5f5f5; 
 }
 body.dark-mode .form-control, 
-body.dark-mode .form-select {
-    background-color: #2b2b2b; /* Background input/select */
-    color: #f5f5f5;
+body.dark-mode .form-select,
+body.dark-mode .dropdown-menu {
+    background-color: #2b2b2b; 
+    color: #f5f5f5; /* FIX: Teks input/select jadi putih */
     border-color: #444;
 }
 body.dark-mode .form-control::placeholder {
     color: #aaa;
 }
+/* Dropdown menu items */
+body.dark-mode .dropdown-item {
+    color: #f5f5f5;
+}
+body.dark-mode .dropdown-item:hover,
+body.dark-mode .dropdown-item:focus {
+    background-color: #383838;
+}
+
 /* Tombol Sekunder di Dark Mode */
 body.dark-mode .btn-secondary {
     background-color: #333;
@@ -188,37 +248,56 @@ body.dark-mode .btn-secondary:hover {
     background-color: #444;
     border-color: #444;
 }
-/* Tombol outline-primary untuk dark mode */
 body.dark-mode .btn-outline-primary { 
-    color: #0d6efd; /* Primary blue tetap terlihat */
+    color: #0d6efd; 
     border-color: #0d6efd; 
 }
 body.dark-mode .btn-outline-primary:hover { 
     background-color: #0d6efd; 
     color: #fff; 
 }
-
 /* Tombol toggle tema */
 .theme-btn { 
     border: none; 
     background: transparent; 
-    color: inherit; /* Ambil warna dari navbar */
+    color: inherit; 
     font-size: 1.2rem; 
     cursor: pointer; 
     margin-left: 10px; 
-    line-height: 1.8; /* Sesuaikan agar sejajar dengan nav-link */
+    line-height: 1.8; 
     text-decoration: none;
 }
-/* Live Search Suggestions - konsisten dengan dark mode card */
-body.dark-mode #suggestions { 
-    background-color: #1e1e1e; 
-    border: 1px solid #333; 
-}
-body.dark-mode #suggestions a { color: #f5f5f5; }
 body.dark-mode .alert-info {
     background-color: #1f1f1f;
     border-color: #333;
     color: #6c757d;
+}
+
+/* RATING STAR STYLING */
+.rating-stars-display {
+    color: gold; 
+    letter-spacing: 2px;
+}
+.rating-stars-display small {
+    color: #bbb;
+}
+
+/* New Search/Filter Bar Styling */
+.filter-container {
+    background-color: var(--bs-light);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 25px;
+}
+body.dark-mode .filter-container {
+    background-color: #1f1f1f;
+    border: 1px solid #333;
+}
+
+/* Fix for dropdown menus inside dropdowns */
+.dropdown-menu-end {
+    right: 0;
+    left: auto;
 }
 </style>
 </head>
@@ -239,6 +318,7 @@ body.dark-mode .alert-info {
                     <?php if (isset($_SESSION['user'])): ?>
                         <li class="nav-item"><a class="nav-link" href="cart.php">Cart</a></li>
                         <li class="nav-item"><a class="nav-link" href="my_orders.php">Pesanan Saya</a></li>
+                        <li class="nav-item"><a class="nav-link" href="wishlist.php">Wishlist</a></li>
                         <?php if ($_SESSION['user']['role'] === 'admin'): ?>
                             <li class="nav-item"><a class="nav-link" href="admin/dashboard.php">Admin</a></li>
                         <?php endif; ?>
@@ -260,27 +340,55 @@ body.dark-mode .alert-info {
 
 <main class="container my-5">
     <div class="row mb-4">
-        <div class="col-md-10 mx-auto">
-            <form method="get" class="row g-2 align-items-center">
+        <div class="col-md-12">
+            <form method="get" class="row g-3 align-items-center filter-container">
 
-                <div class="col-md-3">
+                <input type="hidden" name="sort_by" value="<?= htmlspecialchars($sort_by); ?>">
+                <input type="hidden" name="category_id" value="<?= htmlspecialchars($category_id ?? ''); ?>">
+                <input type="hidden" name="min_price" value="<?= htmlspecialchars($min_price ?? ''); ?>">
+                <input type="hidden" name="max_price" value="<?= htmlspecialchars($max_price ?? ''); ?>">
+                
+                <div class="col-lg-5 col-md-6">
                     <div class="position-relative">
-                        <input type="text" name="q" id="search-box" class="form-control" placeholder="Search title..." autocomplete="off"
-                               value="<?= htmlspecialchars($q); ?>">
-                        <div id="suggestions" class="list-group position-absolute w-100 shadow-sm"
-                               style="z-index:1000; display:none;"></div>
+                        <input type="text" name="q" id="search-box" class="form-control form-control-lg" placeholder="Cari Judul, Penulis, atau ISBN..." autocomplete="off"
+                                value="<?= htmlspecialchars($q); ?>">
+                        <div id="suggestions" class="list-group position-absolute w-100 shadow-lg"
+                                style="z-index:1000; display:none;"></div>
                     </div>
                 </div>
+                
+                <div class="col-lg-2 col-md-3">
+                    <button type="submit" class="btn btn-primary btn-lg w-100">Cari</button>
+                </div>
 
-                <div class="col-md-2 dropdown">
+                <div class="col-lg-2 col-md-3 dropdown">
+                    <button class="btn btn-secondary w-100 dropdown-toggle" type="button" id="sortByDropdown"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        Urutkan: <?= get_sort_name($sort_by); ?>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item <?= $sort_by == 'date_desc' ? 'active' : ''; ?>" href="#" onclick="document.querySelector('input[name=sort_by]').value='date_desc'; this.closest('form').submit();">Terbaru</a></li>
+                        <li><a class="dropdown-item <?= $sort_by == 'rating_desc' ? 'active' : ''; ?>" href="#" onclick="document.querySelector('input[name=sort_by]').value='rating_desc'; this.closest('form').submit();">Rating Tertinggi</a></li>
+                        <li><a class="dropdown-item <?= $sort_by == 'price_asc' ? 'active' : ''; ?>" href="#" onclick="document.querySelector('input[name=sort_by]').value='price_asc'; this.closest('form').submit();">Harga Terendah</a></li>
+                        <li><a class="dropdown-item <?= $sort_by == 'price_desc' ? 'active' : ''; ?>" href="#" onclick="document.querySelector('input[name=sort_by]').value='price_desc'; this.closest('form').submit();">Harga Tertinggi</a></li>
+                        <li><a class="dropdown-item <?= $sort_by == 'title_asc' ? 'active' : ''; ?>" href="#" onclick="document.querySelector('input[name=sort_by]').value='title_asc'; this.closest('form').submit();">Judul (A-Z)</a></li>
+                    </ul>
+                </div>
+
+
+                <div class="col-lg-3 col-md-12 dropdown">
                     <button class="btn btn-secondary w-100 dropdown-toggle" type="button" id="filterDropdown"
                             data-bs-toggle="dropdown" aria-expanded="false">
-                        Filter
+                        Filter Lanjut
                     </button>
-                    <div class="dropdown-menu p-3" style="min-width:250px;">
+                    <div class="dropdown-menu p-3 dropdown-menu-end" style="min-width:300px;">
+                        
+                        <h6 class="dropdown-header">Filter Aktif: (<?= count(array_filter([$category_id, $min_price, $max_price])) ?>)</h6>
+                        <hr class="dropdown-divider">
+                        
                         <div class="mb-3">
                             <label for="category_id" class="form-label small mb-1">Kategori</label>
-                            <select name="category_id" id="category_id" class="form-select form-select-sm">
+                            <select id="category_filter" class="form-select form-select-sm" onchange="document.querySelector('input[name=category_id]').value=this.value;">
                                 <option value="">Semua Kategori</option>
                                 <?php foreach ($categories as $c): ?>
                                     <option value="<?= $c['id']; ?>" <?= ($category_id == $c['id']) ? 'selected' : ''; ?>>
@@ -289,52 +397,65 @@ body.dark-mode .alert-info {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-
-                        <div class="mb-3">
-                            <label for="min_price" class="form-label small mb-1">Harga Minimum</label>
-                            <input type="number" step="0.01" name="min_price" id="min_price"
-                                         class="form-control form-control-sm"
-                                         placeholder="Min Price"
-                                         value="<?= htmlspecialchars($min_price ?? ''); ?>">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="max_price" class="form-label small mb-1">Harga Maksimum</label>
-                            <input type="number" step="0.01" name="max_price" id="max_price"
-                                         class="form-control form-control-sm"
-                                         placeholder="Max Price"
-                                         value="<?= htmlspecialchars($max_price ?? ''); ?>">
+                        
+                        <div class="row g-2 mb-3">
+                            <div class="col">
+                                <label for="min_price_filter" class="form-label small mb-1">Min Harga</label>
+                                <input type="number" step="0.01" id="min_price_filter"
+                                                 class="form-control form-control-sm"
+                                                 placeholder="Min"
+                                                 value="<?= htmlspecialchars($min_price ?? ''); ?>"
+                                                 onchange="document.querySelector('input[name=min_price]').value=this.value;">
+                            </div>
+                            <div class="col">
+                                <label for="max_price_filter" class="form-label small mb-1">Max Harga</label>
+                                <input type="number" step="0.01" id="max_price_filter"
+                                                 class="form-control form-control-sm"
+                                                 placeholder="Max"
+                                                 value="<?= htmlspecialchars($max_price ?? ''); ?>"
+                                                 onchange="document.querySelector('input[name=max_price]').value=this.value;">
+                            </div>
                         </div>
 
                         <button type="submit" class="btn btn-primary btn-sm w-100">Terapkan Filter</button>
                     </div>
                 </div>
-
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary w-100">Search</button>
-                </div>
-
             </form>
         </div>
     </div>
 
     <section class="books">
-        <?php if (count($books) === 0): ?>
+        <?php if ($totalBooks === 0): ?>
              <div class="alert alert-info text-center border-0">Tidak ada buku ditemukan dengan kriteria tersebut.</div>
         <?php else: ?>
             <div class="row row-cols-1 row-cols-md-3 g-4">
                 <?php foreach ($books as $b): ?>
                     <div class="col">
                         <article class="book-card card h-100 shadow-sm">
-                            <?php if (!empty($b['image']) && file_exists(__DIR__ . '/assets/images/' . $b['image'])): ?>
-                                <img src="assets/images/<?= htmlspecialchars($b['image']); ?>" class="book-image" alt="<?= htmlspecialchars($b['title']); ?>">
-                            <?php else: ?>
-                                
-                            <?php endif; ?>
+                            <?php 
+                                $imagePath = !empty($b['image']) && file_exists(__DIR__ . '/assets/images/' . $b['image']) 
+                                    ? 'assets/images/' . htmlspecialchars($b['image']) 
+                                    : 'https://via.placeholder.com/400x600?text=No+Cover';
+                            ?>
+                            <img src="<?= $imagePath; ?>" class="book-image" alt="<?= htmlspecialchars($b['title']); ?>">
+                            
                             <div class="card-body">
                                 <h3 class="card-title"><?= htmlspecialchars($b['title']); ?></h3>
-                                <p>Penulis: <?= htmlspecialchars($b['author']); ?></p>
-                                <p>Harga: Rp **<?= number_format($b['price'], 2, ',', '.'); ?>**</p>
+                                
+                                <?php if ($b['total_reviews'] > 0): ?>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="text-warning rating-stars-display me-2 h6 mb-0">
+                                            <?= display_stars($b['avg_rating']); ?>
+                                        </span>
+                                        <small class="text-muted">(<?= $b['total_reviews']; ?> ulasan)</small>
+                                    </div>
+                                <?php else: ?>
+                                    <small class="text-muted mb-2">Belum ada ulasan.</small>
+                                <?php endif; ?>
+
+                                <p class="mb-1">Penulis: <?= htmlspecialchars($b['author']); ?></p>
+                                <p class="fw-bold text-success">Rp <?= number_format($b['price'], 2, ',', '.'); ?></p>
+                                
                                 <div class="btn-group d-flex gap-2 mt-auto">
                                     <a href="book_detail.php?id=<?= $b['id']; ?>" class="btn btn-outline-primary btn-sm">Detail</a>
                                     <?php if (isset($_SESSION['user']) && $_SESSION['user']['role'] === 'admin'): ?>
@@ -396,6 +517,14 @@ body.dark-mode .alert-info {
 document.addEventListener('DOMContentLoaded', function () {
     const searchBox = document.getElementById('search-box');
     const suggestions = document.getElementById('suggestions');
+    
+    // Sinkronkan nilai filter yang tersembunyi dengan dropdown filter lanjutan
+    document.getElementById('filterDropdown').addEventListener('click', function() {
+        document.getElementById('category_filter').value = document.querySelector('input[name=category_id]').value;
+        document.getElementById('min_price_filter').value = document.querySelector('input[name=min_price]').value;
+        document.getElementById('max_price_filter').value = document.querySelector('input[name=max_price]').value;
+    });
+
     searchBox.addEventListener('input', function () {
         const query = this.value.trim();
         if (query.length < 2) { suggestions.style.display = 'none'; return; }
@@ -408,15 +537,12 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     });
     suggestions.addEventListener('click', e => {
-        // Asumsi saran di search_suggest.php menggunakan kelas 'suggestion-item'
-        const item = e.target.closest('.list-group-item'); // Diubah dari .suggestion-item ke .list-group-item jika menggunakan list-group
+        const item = e.target.closest('.list-group-item'); 
         if (item) {
-            // Asumsi data judul disimpan di data-title
             const title = item.getAttribute('data-title');
             if (title) {
                 searchBox.value = title;
                 suggestions.style.display = 'none';
-                // Trigger form submit or focus, depending on desired behavior
                 searchBox.closest('form').submit(); // Langsung submit setelah memilih
             }
         }

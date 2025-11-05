@@ -30,10 +30,37 @@ if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
 // Re-check theme after potential toggle
 $is_dark_mode = ($_SESSION['user']['theme_mode'] ?? 0) == 1;
 $theme = $is_dark_mode ? 'dark' : 'light';
-$nav_class = $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary'; // Konsisten dengan index.php
+$nav_class = $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary'; 
 $sidebar_color = $is_dark_mode ? '#1e1e1e' : '#f8f9fa';
 $card_color = $is_dark_mode ? '#1e1e1e' : '#ffffff';
 
+
+// ===========================================
+// ✅ LOGIKA PENGAMBILAN STATISTIK
+// ===========================================
+
+try {
+    // 1. Total Buku
+    $total_books = $pdo->query('SELECT COUNT(id) FROM books')->fetchColumn();
+
+    // 2. Total Pengguna (Hanya customer)
+    $total_users = $pdo->query('SELECT COUNT(id) FROM users WHERE role = "customer"')->fetchColumn();
+
+    // 3. Total Pesanan (Semua status)
+    $total_orders = $pdo->query('SELECT COUNT(id) FROM orders')->fetchColumn();
+
+    // 4. Total Revenue (Total harga dari pesanan yang sudah Selesai/Paid - asumsi kolom status 'selesai' atau 'paid')
+    // Menggunakan SUM() dan memastikan kolom status ada di tabel orders
+    $total_revenue_stmt = $pdo->prepare("SELECT SUM(total_price) FROM orders WHERE status = 'paid' OR status = 'selesai'");
+    $total_revenue_stmt->execute();
+    $total_revenue = $total_revenue_stmt->fetchColumn() ?? 0;
+
+} catch (PDOException $e) {
+    // Jika tabel belum ada atau nama kolom salah, set ke 0
+    $total_books = $total_users = $total_orders = $total_revenue = 'N/A';
+}
+
+// ===========================================
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -48,13 +75,7 @@ $card_color = $is_dark_mode ? '#1e1e1e' : '#ffffff';
         body { transition: background-color 0.3s, color 0.3s; }
         .navbar-brand { font-weight: bold; }
         .toggle-btn {
-            border: none;
-            background-color: transparent;
-            color: inherit;
-            font-weight: bold;
-            cursor: pointer;
-            padding: .5rem 1rem;
-            text-decoration: none;
+            border: none; background-color: transparent; color: inherit; font-weight: bold; cursor: pointer; padding: .5rem 1rem; text-decoration: none;
         }
 
         /* DARK MODE - KONSISTEN SITE-WIDE */
@@ -99,6 +120,7 @@ $card_color = $is_dark_mode ? '#1e1e1e' : '#ffffff';
             color: <?= $is_dark_mode ? '#f5f5f5' : '#333'; ?>;
             border: 1px solid <?= $is_dark_mode ? '#333' : 'rgba(0,0,0,.125)'; ?>;
         }
+        .card-title { color: #0d6efd; }
         .toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 1055; }
         
         /* Alert and Toast */
@@ -107,7 +129,7 @@ $card_color = $is_dark_mode ? '#1e1e1e' : '#ffffff';
             border-color: #333;
             color: #ccc;
         }
-        .toast.text-bg-primary { /* Primary toast */
+        .toast.text-bg-primary { 
             background-color: #0d6efd !important; 
         }
         
@@ -164,36 +186,73 @@ $card_color = $is_dark_mode ? '#1e1e1e' : '#ffffff';
     <main class="content flex-grow-1">
         <div class="container">
             <h2 class="mb-4 text-primary">Admin Dashboard 📊</h2>
+            
             <?php if (!empty($_SESSION['flash'])): ?>
                 <div class="alert alert-info border-0"><?php echo htmlspecialchars($_SESSION['flash']); unset($_SESSION['flash']); ?></div>
             <?php endif; ?>
+
+            <div class="row g-4 mb-4">
+                
+                <div class="col-md-3">
+                    <div class="card p-3 shadow-sm text-center">
+                        <h5 class="card-title text-success">Total Buku</h5>
+                        <h2 class="fw-bold"><?= htmlspecialchars($total_books); ?></h2>
+                        <a href="../index.php" class="btn btn-sm btn-outline-success mt-2">Lihat Inventaris</a>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card p-3 shadow-sm text-center">
+                        <h5 class="card-title text-info">Total Customer</h5>
+                        <h2 class="fw-bold"><?= htmlspecialchars($total_users); ?></h2>
+                        <a href="users.php" class="btn btn-sm btn-outline-info mt-2">Kelola Pengguna</a>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card p-3 shadow-sm text-center">
+                        <h5 class="card-title text-warning">Total Pesanan</h5>
+                        <h2 class="fw-bold"><?= htmlspecialchars($total_orders); ?></h2>
+                        <a href="orders.php" class="btn btn-sm btn-outline-warning mt-2">Proses Pesanan</a>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card p-3 shadow-sm text-center">
+                        <h5 class="card-title text-primary">Total Revenue</h5>
+                        <h2 class="fw-bold">Rp <?= number_format($total_revenue, 0, ',', '.'); ?></h2>
+                        <a href="report.php" class="btn btn-sm btn-outline-primary mt-2">Lihat Laporan</a>
+                    </div>
+                </div>
+            </div>
+            
             <div class="card shadow-sm p-4">
-                <p>Selamat datang, <?php echo htmlspecialchars($_SESSION['user']['username']); ?>. Gunakan sidebar untuk mengelola inventaris, pengguna, pesanan, dan konten situs.</p>
+                <p>Selamat datang, **<?php echo htmlspecialchars($_SESSION['user']['username']); ?>**. Gunakan sidebar untuk mengelola inventaris, pengguna, pesanan, dan konten situs.</p>
             </div>
             
             <div class="row mt-4 g-4">
-                 <div class="col-md-4">
-                     <div class="card p-3 text-center">
-                         <h5 class="card-title">Manajemen Buku</h5>
-                         <p class="card-text">Kelola daftar buku yang tersedia di toko.</p>
-                         <a href="book_add.php" class="btn btn-sm btn-primary">Tambah Buku</a>
-                     </div>
-                 </div>
-                 <div class="col-md-4">
-                     <div class="card p-3 text-center">
-                         <h5 class="card-title">Lihat Pesanan</h5>
-                         <p class="card-text">Tinjau dan proses pesanan yang masuk.</p>
-                         <a href="orders.php" class="btn btn-sm btn-primary">Lihat Pesanan</a>
-                     </div>
-                 </div>
-                 <div class="col-md-4">
-                     <div class="card p-3 text-center">
-                         <h5 class="card-title">Pengaturan Pengguna</h5>
-                         <p class="card-text">Kelola akun pengguna dan peran mereka.</p>
-                         <a href="users.php" class="btn btn-sm btn-primary">Kelola Pengguna</a>
-                     </div>
-                 </div>
-             </div>
+                <div class="col-md-4">
+                    <div class="card p-3 text-center">
+                        <h5 class="card-title">Manajemen Buku</h5>
+                        <p class="card-text">Kelola daftar buku yang tersedia di toko.</p>
+                        <a href="book_add.php" class="btn btn-sm btn-primary">Tambah Buku</a>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card p-3 text-center">
+                        <h5 class="card-title">Lihat Pesanan</h5>
+                        <p class="card-text">Tinjau dan proses pesanan yang masuk.</p>
+                        <a href="orders.php" class="btn btn-sm btn-primary">Lihat Pesanan</a>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card p-3 text-center">
+                        <h5 class="card-title">Pengaturan Pengguna</h5>
+                        <p class="card-text">Kelola akun pengguna dan peran mereka.</p>
+                        <a href="users.php" class="btn btn-sm btn-primary">Kelola Pengguna</a>
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
 </div>
@@ -229,9 +288,8 @@ function showToast(message) {
     toast.show();
 }
 
-// Fungsi cek pesan baru
+// Fungsi cek pesan baru (Asumsi check_messages.php ada)
 function checkMessages() {
-    // Pastikan path ke check_messages.php sudah benar, relatif terhadap dashboard.php
     $.getJSON('check_messages.php', function(data) {
         let count = data.unread;
         let badge = $('#contact-badge');
@@ -241,7 +299,6 @@ function checkMessages() {
             badge.hide();
         }
 
-        // Tampilkan popup untuk pesan terbaru jika ada pesan baru
         if(data.latest_id > lastMessageId) {
             lastMessageId = data.latest_id;
             if(data.latest_message) {

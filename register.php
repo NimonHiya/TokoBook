@@ -90,17 +90,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         a.text-primary { text-decoration: none; font-weight: 500; }
         a.text-primary:hover { text-decoration: underline; }
         .toggle-btn {
-            border: none;
-            background-color: transparent;
-            color: inherit;
-            font-weight: bold;
-            cursor: pointer;
-            padding: .5rem 1rem;
-            text-decoration: none;
+            border: none; background-color: transparent; color: inherit; font-weight: bold; cursor: pointer; padding: .5rem 1rem; text-decoration: none;
         }
 
         /* DARK MODE - KONSISTEN */
-        body.dark-mode { background-color: #121212; color: #f5f5f5; }
+        body.dark-mode { 
+            background-color: #121212; 
+            color: #f5f5f5; /* Warna teks default Body */
+        }
         
         /* Navbar & Footer Konsisten */
         .navbar-dark.bg-dark,
@@ -111,19 +108,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         /* Card Konsisten */
         body.dark-mode .card { 
             background-color: #1e1e1e !important; 
-            color: #f5f5f5; 
+            color: #f5f5f5; /* Warna teks di Card */
             border: 1px solid #333; 
         }
         
-        /* Input Konsisten */
+        /* Input & Form Control Fix */
+        body.dark-mode .form-control,
+        body.dark-mode .form-label { 
+            color: #f5f5f5; /* Teks Label dan Teks yang diketik */
+        }
         body.dark-mode .form-control { 
-            background-color: #2b2b2b; 
-            color: #f1f1f1; 
+            background-color: #2b2b2b; /* Latar belakang input */
             border: 1px solid #444; 
         }
         body.dark-mode .form-control:focus { 
             background-color: #222; 
             border-color: #0d6efd; 
+        }
+        body.dark-mode .form-control::placeholder {
+            color: #bbb; /* Teks Placeholder */
+            opacity: 1;
         }
 
         /* Teks Link di dark mode */

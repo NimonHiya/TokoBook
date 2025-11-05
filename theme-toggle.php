@@ -1,14 +1,37 @@
 <?php
+session_start();
+// --- PASTIKAN FILE KONEKSI DATABASE DIMUAT DI SINI ---
+// require_once __DIR__ . '/db.php'; 
+// Asumsi: Variabel koneksi PDO bernama $pdo tersedia
+
 // ===============================
-//  THEME TOGGLE + GLOBAL STYLE
+//  THEME TOGGLE LOGIC
 // ===============================
 
-// Toggle mode (ubah cookie)
 if (isset($_GET['toggle']) && $_GET['toggle'] === '1') {
-    if (isset($_COOKIE['theme']) && $_COOKIE['theme'] === 'dark') {
-        setcookie('theme', 'light', time() + (86400 * 30), '/');
+    if (isset($_SESSION['user']) && isset($pdo)) { // Jika pengguna sudah login & koneksi DB tersedia
+        
+        $user_id = $_SESSION['user']['id']; 
+        
+        // 1. Tentukan mode baru
+        // Ambil mode saat ini dari sesi (asumsi sesi diinisialisasi saat login)
+        $current_theme_mode = $_SESSION['user']['theme_mode'] ?? 0; // Default 0 (Light)
+        $new_theme_mode = ($current_theme_mode == 0) ? 1 : 0; // 1 (Dark) atau 0 (Light)
+
+        // 2. Update database
+        $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
+        $update_stmt->execute([$new_theme_mode, $user_id]);
+        
+        // 3. Update sesi
+        $_SESSION['user']['theme_mode'] = $new_theme_mode; 
+        
     } else {
-        setcookie('theme', 'dark', time() + (86400 * 30), '/');
+        // Jika belum login atau koneksi DB gagal, gunakan Cookie
+        if (isset($_COOKIE['theme']) && $_COOKIE['theme'] === 'dark') {
+            setcookie('theme', 'light', time() + (86400 * 30), '/');
+        } else {
+            setcookie('theme', 'dark', time() + (86400 * 30), '/');
+        }
     }
 
     // Redirect kembali ke halaman sebelumnya
@@ -17,8 +40,19 @@ if (isset($_GET['toggle']) && $_GET['toggle'] === '1') {
     exit;
 }
 
-// Ambil status tema
-$theme = $_COOKIE['theme'] ?? 'light';
+// ===============================
+//  DETERMINASI TEMA SAAT INI
+// ===============================
+
+if (isset($_SESSION['user'])) {
+    // Pengguna Login: Ambil dari sesi (nilai 1 atau 0)
+    $is_dark_mode = ($_SESSION['user']['theme_mode'] ?? 0) == 1;
+} else {
+    // Pengguna Anonim: Ambil dari cookie
+    $is_dark_mode = ($_COOKIE['theme'] ?? 'light') === 'dark';
+}
+
+$theme = $is_dark_mode ? 'dark' : 'light';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -101,7 +135,9 @@ $theme = $_COOKIE['theme'] ?? 'light';
 
   <div style="padding: 20px;">
     <h1><?= $theme === 'dark' ? '🌙 Mode Gelap Aktif' : '☀️ Mode Terang Aktif' ?></h1>
-    <p>Mode ini akan diterapkan di semua halaman karena disimpan di cookie.</p>
+    <p>
+      Mode ini diambil dari **Database** jika Anda login (persisten), atau dari **Cookie** jika Anda anonim.
+    </p>
   </div>
 </body>
 </html>

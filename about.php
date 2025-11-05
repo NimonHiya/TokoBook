@@ -2,7 +2,49 @@
 session_start();
 require_once __DIR__ . '/db.php';
 
-// --- Ambil file konten, judul, dan gambar ---
+// -------------------------
+// CEK LOGIN DAN STATUS THEME
+// -------------------------
+$is_logged_in = isset($_SESSION['user']);
+if ($is_logged_in) {
+    $is_dark_mode = ($_SESSION['user']['theme_mode'] ?? 0) == 1;
+} else {
+    $is_dark_mode = ($_COOKIE['theme'] ?? 'light') === 'dark';
+}
+
+// -------------------------
+// TOGGLE THEME MODE
+// -------------------------
+if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+    if ($is_logged_in) {
+        $user_id = $_SESSION['user']['id'];
+        $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
+        $new_db_mode = $current_db_mode == 0 ? 1 : 0;
+
+        // Update DB
+        $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
+        $update_stmt->execute([$new_db_mode, $user_id]);
+
+        // Update sesi agar langsung berubah
+        $_SESSION['user']['theme_mode'] = $new_db_mode;
+
+    } else {
+        // Toggle cookie
+        if (isset($_COOKIE['theme']) && $_COOKIE['theme'] === 'dark') {
+            setcookie('theme', 'light', time() + (86400 * 30), '/');
+        } else {
+            setcookie('theme', 'dark', time() + (86400 * 30), '/');
+        }
+    }
+
+    // Redirect agar tema langsung diterapkan
+    header("Location: " . strtok($_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+
+// -------------------------
+// BACA FILE ABOUT
+// -------------------------
 $about_file = __DIR__ . '/data/about.txt';
 $about_title_file = __DIR__ . '/data/about_title.txt';
 $about_image_file = __DIR__ . '/data/about_image.txt';
@@ -11,19 +53,18 @@ $content = file_exists($about_file) ? file_get_contents($about_file) : 'About co
 $about_title = file_exists($about_title_file) ? file_get_contents($about_title_file) : 'Tentang TokoBook 📖';
 $about_image = file_exists($about_image_file) ? trim(file_get_contents($about_image_file)) : 'toko.jpg';
 
-// --- Logika pemotongan konten ---
+// -------------------------
+// POTONG KONTEN
+// -------------------------
 $cut_length = 300;
 $long_narration_available = strlen($content) > $cut_length;
 
-if ($long_narration_available) {
-    $short_content = substr($content, 0, $cut_length);
-    $remaining_content = substr($content, $cut_length);
-} else {
-    $short_content = $content;
-    $remaining_content = '';
-}
+$short_content = substr($content, 0, $cut_length);
+$remaining_content = $long_narration_available ? substr($content, $cut_length) : '';
 
-// --- Pagination untuk rekomendasi buku ---
+// -------------------------
+// PAGINATION
+// -------------------------
 $items_per_page = 4;
 $current_page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
 
@@ -50,48 +91,84 @@ $books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="assets/logo.jpg" type="image/jpeg">
-    <link rel="shortcut icon" href="assets/logo.jpg" type="image/jpeg">
     <title>TokoBook - About Us</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        body {
+            transition: background-color 0.3s, color 0.3s;
+        }
+        body.light-mode {
+            background-color: white;
+            color: black;
+        }
+        body.dark-mode {
+            background-color: #121212;
+            color: white;
+        }
         .navbar-brand { font-weight: bold; }
         .about-content { line-height: 1.6; }
-        .book-card { height: 100%; }
+        .book-card { height: 100%; 
+            /* Tambahkan styling card untuk dark mode */
+            <?php if ($is_dark_mode): ?>
+            background-color: #1e1e1e;
+            color: white;
+            border-color: #333;
+            <?php endif; ?>
+        }
         .book-img { height: 250px; width: 100%; object-fit: cover; }
-        /* --- Gambar gedung (persegi panjang) --- */
         .about-img {
             width: 100%;
             height: 350px;
             object-fit: cover;
             object-position: center;
-            
-            
+        }
+        .toggle-btn {
+            border: none;
+            background-color: transparent;
+            color: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            padding: .5rem 1rem; /* Sesuaikan padding agar terlihat seperti nav-link */
+            text-decoration: none;
+        }
+        .card.dark-mode-card {
+            background-color: #1e1e1e;
+            color: white;
+            border-color: #333;
+        }
+        .card.dark-mode-card .card-text.text-muted {
+            color: #ccc !important; /* Memastikan teks muted terlihat di dark mode */
         }
     </style>
 </head>
-<body>
+<body class="<?= $is_dark_mode ? 'dark-mode' : 'light-mode' ?>">
 <header>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg <?= $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary' ?>">
         <div class="container">
             <a class="navbar-brand" href="/TokoBook/index.php">TokoBook</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link" href="index.php">Home</a></li>
-                    <li class="nav-item"><a class="nav-link active" aria-current="page" href="about.php">About</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="about.php">About</a></li>
                     <li class="nav-item"><a class="nav-link" href="contact.php">Contact</a></li>
-                    <?php if (isset($_SESSION['user'])): ?>
+                    <?php if ($is_logged_in): ?>
                         <li class="nav-item"><a class="nav-link" href="cart.php">Cart</a></li>
                         <?php if ($_SESSION['user']['role'] === 'admin'): ?>
                             <li class="nav-item"><a class="nav-link" href="admin/dashboard.php">Admin</a></li>
                         <?php endif; ?>
-                        <li class="nav-item"><a class="nav-link" href="logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
+                        <li class="nav-item"><a class="nav-link" href="logout.php">Logout (<?= htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                     <?php else: ?>
                         <li class="nav-item"><a class="nav-link" href="register.php">Register</a></li>
                         <li class="nav-item"><a class="nav-link" href="login.php">Login</a></li>
                     <?php endif; ?>
+                    <li class="nav-item">
+                        <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
+                            <?= $is_dark_mode ? '☀️' : '🌙' ?>
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -102,10 +179,8 @@ $books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
     <div class="row">
         <div class="col-md-10 mx-auto">
 
-            <!-- Judul dinamis -->
             <h1 class="text-center mb-5 text-primary"><?php echo htmlspecialchars($about_title); ?></h1>
 
-            <!-- Gambar gedung dinamis -->
             <div class="text-center mb-5">
                 <img src="assets/<?php echo htmlspecialchars($about_image); ?>" 
                      class="img-fluid rounded shadow-lg about-img" 
@@ -113,7 +188,7 @@ $books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
             </div>
 
             <h2 class="mb-3 text-secondary">Kisah Kami</h2>
-            <div class="about-content card p-4 shadow-sm mb-5">
+            <div class="about-content card p-4 shadow-sm mb-5 <?= $is_dark_mode ? 'dark-mode-card' : '' ?>">
                 <p class="lead">
                     <?php echo nl2br(htmlspecialchars($short_content)); ?>
                     <?php if ($long_narration_available): ?>
@@ -133,7 +208,7 @@ $books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
                 <div class="row row-cols-1 row-cols-md-4 g-4 mb-4">
                     <?php foreach ($books_on_page as $book): ?>
                         <div class="col">
-                            <div class="card book-card shadow-sm">
+                            <div class="card book-card shadow-sm <?= $is_dark_mode ? 'dark-mode-card' : '' ?>">
                                 <?php 
                                     $imagePath = !empty($book['image']) && file_exists(__DIR__ . '/assets/images/' . $book['image']) 
                                         ? 'assets/images/' . htmlspecialchars($book['image']) 
@@ -175,15 +250,17 @@ $books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
                     </nav>
                 <?php endif; ?>
             <?php else: ?>
-                <div class="alert alert-warning text-center">Belum ada buku yang tersedia di database.</div>
+                <div class="alert <?= $is_dark_mode ? 'alert-dark text-white' : 'alert-warning' ?> text-center border-0">Belum ada buku yang tersedia di database.</div>
             <?php endif; ?>
 
         </div>
     </div>
 </main>
 
-<footer class="bg-light py-3 text-center mt-5">
-    <p>&copy; <?php echo date('Y'); ?> TokoBook</p>
+<footer class="py-3 mt-5 <?= $is_dark_mode ? 'bg-dark text-light' : 'bg-light text-dark' ?>">
+    <div class="container text-center">
+        <p>&copy; <?= date('Y'); ?> TokoBook</p>
+    </div>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

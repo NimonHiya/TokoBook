@@ -2,12 +2,22 @@
 session_start();
 require_once __DIR__ . '/db.php';
 
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false; 
+const FEATURE_SEARCH_FILTER = false; 
+const FEATURE_RATING_REVIEW = false;
+const FEATURE_WISHLIST = false; 
+// **********************************************************
+
+
 // --- DARK MODE LOGIC START ---
 
 $is_logged_in = isset($_SESSION['user']);
 $theme_source = ''; 
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+// LOGIKA PHP UNTUK TOGGLE DIHAPUS JIKA FITUR DIMATIKAN
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     if ($is_logged_in) {
         // Logika Database
         $user_id = $_SESSION['user']['id']; 
@@ -45,23 +55,25 @@ $theme = $is_dark_mode ? 'dark' : 'light';
 
 // --- DARK MODE LOGIC END ---
 
-// --- Helper function untuk bintang ---
-function display_stars($rating) {
-    $stars = '';
-    $full_stars = floor($rating);
-    
-    for ($i = 1; $i <= 5; $i++) {
-        if ($i <= $full_stars) {
-            $stars .= '★'; 
-        } else {
-            $stars .= '☆'; 
+// --- Helper function untuk bintang (DIBUAT KONDISIONAL) ---
+if (FEATURE_RATING_REVIEW) {
+    function display_stars($rating) {
+        $stars = '';
+        $full_stars = floor($rating);
+        
+        for ($i = 1; $i <= 5; $i++) {
+            if ($i <= $full_stars) {
+                $stars .= '★'; 
+            } else {
+                $stars .= '☆'; 
+            }
         }
+        return $stars;
     }
-    return $stars;
 }
 
 
-// --- Input pencarian, filter, dan sorting ---
+// --- Input pencarian, filter, dan sorting (Dipertahankan di PHP agar SQL tidak error) ---
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 $category_id = isset($_GET['category_id']) && $_GET['category_id'] !== '' ? intval($_GET['category_id']) : null;
 $min_price = isset($_GET['min_price']) && $_GET['min_price'] !== '' ? floatval($_GET['min_price']) : null;
@@ -84,21 +96,23 @@ if (isset($pdo)) {
 $where = [];
 $params = [];
 
-if ($q) {
-    $where[] = 'b.title LIKE :q';
-    $params[':q'] = '%' . $q . '%';
-}
-if ($category_id) {
-    $where[] = 'b.category_id = :cid';
-    $params[':cid'] = $category_id;
-}
-if ($min_price !== null) {
-    $where[] = 'b.price >= :minp';
-    $params[':minp'] = $min_price;
-}
-if ($max_price !== null) {
-    $where[] = 'b.price <= :maxp';
-    $params[':maxp'] = $max_price;
+if (FEATURE_SEARCH_FILTER) { // Bungkus filter logic
+    if ($q) {
+        $where[] = 'b.title LIKE :q';
+        $params[':q'] = '%' . $q . '%';
+    }
+    if ($category_id) {
+        $where[] = 'b.category_id = :cid';
+        $params[':cid'] = $category_id;
+    }
+    if ($min_price !== null) {
+        $where[] = 'b.price >= :minp';
+        $params[':minp'] = $min_price;
+    }
+    if ($max_price !== null) {
+        $where[] = 'b.price <= :maxp';
+        $params[':maxp'] = $max_price;
+    }
 }
 
 $whereSql = count($where) ? ' WHERE ' . implode(' AND ', $where) : '';
@@ -106,23 +120,27 @@ $whereSql = count($where) ? ' WHERE ' . implode(' AND ', $where) : '';
 // --- Logika Sorting SQL ---
 $orderBySql = 'ORDER BY b.id DESC'; // Default (date_desc)
 
-switch ($sort_by) {
-    case 'rating_desc':
-        $orderBySql = 'ORDER BY avg_rating DESC, b.id DESC';
-        break;
-    case 'price_asc':
-        $orderBySql = 'ORDER BY b.price ASC, b.id DESC';
-        break;
-    case 'price_desc':
-        $orderBySql = 'ORDER BY b.price DESC, b.id DESC';
-        break;
-    case 'title_asc':
-        $orderBySql = 'ORDER BY b.title ASC, b.id DESC';
-        break;
-    case 'date_desc':
-    default:
-        $orderBySql = 'ORDER BY b.id DESC';
-        break;
+if (FEATURE_RATING_REVIEW) { // Hanya izinkan sorting rating jika fitur rating aktif
+    switch ($sort_by) {
+        case 'rating_desc':
+            $orderBySql = 'ORDER BY avg_rating DESC, b.id DESC';
+            break;
+        case 'price_asc':
+            $orderBySql = 'ORDER BY b.price ASC, b.id DESC';
+            break;
+        case 'price_desc':
+            $orderBySql = 'ORDER BY b.price DESC, b.id DESC';
+            break;
+        case 'title_asc':
+            $orderBySql = 'ORDER BY b.title ASC, b.id DESC';
+            break;
+        case 'date_desc':
+        default:
+            $orderBySql = 'ORDER BY b.id DESC';
+            break;
+    }
+} else {
+    $orderBySql = 'ORDER BY b.id DESC'; // Default jika sorting rating dimatikan
 }
 
 
@@ -139,16 +157,15 @@ if (isset($pdo)) {
     $totalBooks = $countStmt->fetchColumn();
     $totalPages = ceil($totalBooks / $perPage);
 
-    // Ambil data buku DENGAN AVG RATING
+    // Ambil data buku DENGAN AVG RATING (Hanya JOIN jika rating aktif)
     $sql = '
         SELECT 
-            b.*,
-            COALESCE(AVG(r.rating), 0) AS avg_rating,
-            COUNT(r.id) AS total_reviews
+            b.*
+            ' . (FEATURE_RATING_REVIEW ? ', COALESCE(AVG(r.rating), 0) AS avg_rating, COUNT(r.id) AS total_reviews' : '') . '
         FROM books b
-        LEFT JOIN reviews r ON b.id = r.book_id
+        ' . (FEATURE_RATING_REVIEW ? 'LEFT JOIN reviews r ON b.id = r.book_id' : '') . '
         ' . $whereSql . '
-        GROUP BY b.id
+        ' . (FEATURE_RATING_REVIEW ? 'GROUP BY b.id' : '') . '
         ' . $orderBySql . '
         LIMIT :limit OFFSET :offset
     ';
@@ -318,7 +335,9 @@ body.dark-mode .filter-container {
                     <?php if (isset($_SESSION['user'])): ?>
                         <li class="nav-item"><a class="nav-link" href="cart.php">Cart</a></li>
                         <li class="nav-item"><a class="nav-link" href="my_orders.php">Pesanan Saya</a></li>
+                        <?php if (FEATURE_WISHLIST): ?>
                         <li class="nav-item"><a class="nav-link" href="wishlist.php">Wishlist</a></li>
+                        <?php endif; ?>
                         <?php if ($_SESSION['user']['role'] === 'admin'): ?>
                             <li class="nav-item"><a class="nav-link" href="admin/dashboard.php">Admin</a></li>
                         <?php endif; ?>
@@ -327,11 +346,13 @@ body.dark-mode .filter-container {
                         <li class="nav-item"><a class="nav-link" href="register.php">Register</a></li>
                         <li class="nav-item"><a class="nav-link" href="login.php">Login</a></li>
                     <?php endif; ?>
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="theme-btn" title="Toggle dark mode">
                             <?= $theme === 'dark' ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
                 </ul>
             </div>
         </div>
@@ -341,6 +362,7 @@ body.dark-mode .filter-container {
 <main class="container my-5">
     <div class="row mb-4">
         <div class="col-md-12">
+            <?php if (FEATURE_SEARCH_FILTER): ?>
             <form method="get" class="row g-3 align-items-center filter-container">
 
                 <input type="hidden" name="sort_by" value="<?= htmlspecialchars($sort_by); ?>">
@@ -387,8 +409,8 @@ body.dark-mode .filter-container {
                         <hr class="dropdown-divider">
                         
                         <div class="mb-3">
-                            <label for="category_id" class="form-label small mb-1">Kategori</label>
-                            <select id="category_filter" class="form-select form-select-sm" onchange="document.querySelector('input[name=category_id]').value=this.value;">
+                            <label for="category_id_filter" class="form-label small mb-1">Kategori</label>
+                            <select id="category_id_filter" class="form-select form-select-sm" onchange="document.querySelector('input[name=category_id]').value=this.value;">
                                 <option value="">Semua Kategori</option>
                                 <?php foreach ($categories as $c): ?>
                                     <option value="<?= $c['id']; ?>" <?= ($category_id == $c['id']) ? 'selected' : ''; ?>>
@@ -421,6 +443,7 @@ body.dark-mode .filter-container {
                     </div>
                 </div>
             </form>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -442,15 +465,17 @@ body.dark-mode .filter-container {
                             <div class="card-body">
                                 <h3 class="card-title"><?= htmlspecialchars($b['title']); ?></h3>
                                 
-                                <?php if ($b['total_reviews'] > 0): ?>
-                                    <div class="d-flex align-items-center mb-2">
-                                        <span class="text-warning rating-stars-display me-2 h6 mb-0">
-                                            <?= display_stars($b['avg_rating']); ?>
-                                        </span>
-                                        <small class="text-muted">(<?= $b['total_reviews']; ?> ulasan)</small>
-                                    </div>
-                                <?php else: ?>
-                                    <small class="text-muted mb-2">Belum ada ulasan.</small>
+                                <?php if (FEATURE_RATING_REVIEW): ?>
+                                    <?php if ($b['total_reviews'] > 0): ?>
+                                        <div class="d-flex align-items-center mb-2">
+                                            <span class="text-warning rating-stars-display me-2 h6 mb-0">
+                                                <?= display_stars($b['avg_rating']); ?>
+                                            </span>
+                                            <small class="text-muted">(<?= $b['total_reviews']; ?> ulasan)</small>
+                                        </div>
+                                    <?php else: ?>
+                                        <small class="text-muted mb-2">Belum ada ulasan.</small>
+                                    <?php endif; ?>
                                 <?php endif; ?>
 
                                 <p class="mb-1">Penulis: <?= htmlspecialchars($b['author']); ?></p>
@@ -473,7 +498,6 @@ body.dark-mode .filter-container {
                 <nav>
                     <ul class="pagination justify-content-center mt-4">
                         <?php 
-                        // Ambil query string saat ini (tanpa page dan toggle_theme)
                         $queryString = http_build_query(array_filter($_GET, fn($key) => $key !== 'page' && $key !== 'toggle_theme', ARRAY_FILTER_USE_KEY));
                         $baseHref = strtok($_SERVER['PHP_SELF'], '?');
                         $separator = $queryString ? '&' : '?';
@@ -520,36 +544,56 @@ document.addEventListener('DOMContentLoaded', function () {
     
     // Sinkronkan nilai filter yang tersembunyi dengan dropdown filter lanjutan
     document.getElementById('filterDropdown').addEventListener('click', function() {
-        document.getElementById('category_filter').value = document.querySelector('input[name=category_id]').value;
-        document.getElementById('min_price_filter').value = document.querySelector('input[name=min_price]').value;
-        document.getElementById('max_price_filter').value = document.querySelector('input[name=max_price]').value;
+        // Menggunakan ID filter yang benar di dalam dropdown
+        const categoryFilter = document.getElementById('category_id_filter');
+        const minPriceFilter = document.getElementById('min_price_filter');
+        const maxPriceFilter = document.getElementById('max_price_filter');
+
+        // Mengambil nilai dari input hidden (yang merepresentasikan filter yang saat ini aktif di URL)
+        categoryFilter.value = document.querySelector('input[name=category_id]').value;
+        minPriceFilter.value = document.querySelector('input[name=min_price]').value;
+        maxPriceFilter.value = document.querySelector('input[name=max_price]').value;
     });
 
-    searchBox.addEventListener('input', function () {
-        const query = this.value.trim();
-        if (query.length < 2) { suggestions.style.display = 'none'; return; }
-        // Note: Pastikan search_suggest.php ada dan berfungsi
-        fetch('search_suggest.php?q=' + encodeURIComponent(query))
-            .then(res => res.text())
-            .then(html => {
-                suggestions.innerHTML = html;
-                suggestions.style.display = html.trim() ? 'block' : 'none';
-            });
+    // Menambahkan event listener untuk menyinkronkan perubahan di dropdown ke input hidden
+    document.getElementById('category_id_filter').addEventListener('change', function() {
+        document.querySelector('input[name=category_id]').value = this.value;
     });
-    suggestions.addEventListener('click', e => {
-        const item = e.target.closest('.list-group-item'); 
-        if (item) {
-            const title = item.getAttribute('data-title');
-            if (title) {
-                searchBox.value = title;
-                suggestions.style.display = 'none';
-                searchBox.closest('form').submit(); // Langsung submit setelah memilih
+    document.getElementById('min_price_filter').addEventListener('change', function() {
+        document.querySelector('input[name=min_price]').value = this.value;
+    });
+    document.getElementById('max_price_filter').addEventListener('change', function() {
+        document.querySelector('input[name=max_price]').value = this.value;
+    });
+    
+    // Search Suggestions Logic (Hanya berjalan jika fitur aktif)
+    if (<?php echo FEATURE_SEARCH_FILTER ? 'true' : 'false'; ?>) {
+        searchBox.addEventListener('input', function () {
+            const query = this.value.trim();
+            if (query.length < 2) { suggestions.style.display = 'none'; return; }
+            // Note: Pastikan search_suggest.php ada dan berfungsi
+            fetch('search_suggest.php?q=' + encodeURIComponent(query))
+                .then(res => res.text())
+                .then(html => {
+                    suggestions.innerHTML = html;
+                    suggestions.style.display = html.trim() ? 'block' : 'none';
+                });
+        });
+        suggestions.addEventListener('click', e => {
+            const item = e.target.closest('.list-group-item'); 
+            if (item) {
+                const title = item.getAttribute('data-title');
+                if (title) {
+                    searchBox.value = title;
+                    suggestions.style.display = 'none';
+                    searchBox.closest('form').submit(); // Langsung submit setelah memilih
+                }
             }
-        }
-    });
-    document.addEventListener('click', e => {
-        if (!suggestions.contains(e.target) && e.target !== searchBox) suggestions.style.display = 'none';
-    });
+        });
+        document.addEventListener('click', e => {
+            if (!suggestions.contains(e.target) && e.target !== searchBox) suggestions.style.display = 'none';
+        });
+    }
 });
 </script>
 </body>

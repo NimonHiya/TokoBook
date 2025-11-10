@@ -1,6 +1,12 @@
 <?php
-session_start(); 
-require_once __DIR__.'/../db.php';
+session_start();
+require_once __DIR__ . '/../db.php';
+
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
 
 // --- Login Check & Theme Detection ---
 if (!isset($_SESSION['user']) || $_SESSION['user']['role']!=='admin') { 
@@ -9,11 +15,11 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role']!=='admin') {
 }
 $user_id = $_SESSION['user']['id'];
 
-// --- Dark mode detection & Toggle Logic ---
+// --- Dark mode detection & Toggle Logic (KONDISIONAL) ---
 $is_logged_in = true; 
 $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
     if (isset($pdo)) {
         $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
@@ -151,35 +157,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          body.dark-mode .form-control,
          body.dark-mode .form-select,
          body.dark-mode textarea { 
-            background-color: #2b2b2b; 
-            color: #f1f1f1; 
-            border: 1px solid #444; 
-         }
-         body.dark-mode .form-control:focus,
-         body.dark-mode textarea:focus { 
-            background-color: #222; 
-            border-color: #0d6efd; 
-         }
-         body.dark-mode .form-control[type="file"]::file-selector-button {
+             background-color: #2b2b2b; 
+             color: #f1f1f1; 
+             border: 1px solid #444; 
+           }
+           body.dark-mode .form-control:focus,
+           body.dark-mode textarea:focus { 
+             background-color: #222; 
+             border-color: #0d6efd; 
+           }
+           body.dark-mode .form-control[type="file"]::file-selector-button {
              background-color: #333;
              color: #f5f5f5;
              border-right: 1px solid #444;
+           }
+           .preview-img {
+             width: 100%;
+             max-width: 500px;
+             height: 300px;
+             object-fit: cover;
+             border-radius: 10px;
+             border: 2px solid <?= $is_dark_mode ? '#333' : '#eee'; ?>;
          }
-         .preview-img {
-            width: 100%;
-            max-width: 500px;
-            height: 300px;
-            object-fit: cover;
-            border-radius: 10px;
-            border: 2px solid <?= $is_dark_mode ? '#333' : '#eee'; ?>;
-        }
-        /* Alert colors in dark mode */
-        body.dark-mode .alert-success { background-color: #1a473b; color: #d1e7dd; border-color: #1a473b; }
-        body.dark-mode .alert-danger { background-color: #491d1e; color: #f8d7da; border-color: #491d1e; }
-        body.dark-mode .alert-info { background-color: #1f1f1f; color: #ccc; border-color: #333; }
-        body.dark-mode .btn-close { filter: invert(1); }
-        
-        @media (max-width: 991.98px) { .sidebar { min-height: auto; } }
+         /* Alert colors in dark mode */
+         body.dark-mode .alert-success { background-color: #1a473b; color: #d1e7dd; border-color: #1a473b; }
+         body.dark-mode .alert-danger { background-color: #491d1e; color: #f8d7da; border-color: #491d1e; }
+         body.dark-mode .alert-info { background-color: #1f1f1f; color: #ccc; border-color: #333; }
+         body.dark-mode .btn-close { filter: invert(1); }
+         
+         @media (max-width: 991.98px) { .sidebar { min-height: auto; } }
     </style>
 </head>
 <body class="<?= $theme === 'dark' ? 'dark-mode' : '' ?>">
@@ -197,11 +203,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <li class="nav-item"><a class="nav-link" href="../contact.php">Contact</a></li>
                     <li class="nav-item"><a class="nav-link" href="../cart.php">Cart</a></li>
                     <li class="nav-item"><a class="nav-link active" aria-current="page" href="dashboard.php">Admin</a></li>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    
                     <li class="nav-item"><a class="nav-link" href="../logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                 </ul>
             </div>
@@ -240,7 +250,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="mb-3">
                         <label for="title" class="form-label">Judul Halaman</label>
                         <input type="text" id="title" name="title" class="form-control" 
-                               value="<?php echo htmlspecialchars($title); ?>" required>
+                                value="<?php echo htmlspecialchars($title); ?>" required>
                     </div>
 
                     <div class="mb-3">

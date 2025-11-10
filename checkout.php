@@ -2,11 +2,23 @@
 session_start();
 require_once __DIR__ . '/db.php'; // Asumsi $pdo tersedia dari file ini
 
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
+
 // 1. Pengecekan Otentikasi
 if (!isset($_SESSION['user'])){ 
     header('Location: login.php'); 
     exit; 
 }
+$user_id = $_SESSION['user']['id']; // Ambil user ID di sini
+
+// --- Theme Logic (Tanpa Toggle) ---
+$is_dark_mode = ($_SESSION['user']['theme_mode'] ?? 0) == 1;
+$nav_class = $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary'; 
+
 
 $cart = $_SESSION['cart'] ?? [];
 $message = '';
@@ -22,7 +34,6 @@ if (empty($cart)) {
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $address = trim($_POST['address']);
     $payment = $_POST['payment'];
-    $user_id = $_SESSION['user']['id'];
 
     $ids = implode(',', array_map('intval', array_keys($cart)));
     
@@ -149,9 +160,7 @@ if (empty($cart)) {
         $message_html = '<div class="d-flex align-items-center mb-3"><h4 class="m-0 text-danger">' . $error_icon . 'Transaction Failed!</h4></div><p class="text-danger">' . $message . '</p>';
     }
 } else {
-    // Jika tidak ada POST dan Cart kosong (sudah ditangani di awal)
-    // Jika tidak ada POST tapi Cart ada, user harusnya di cart.php. 
-    // Baris ini saya ganti agar jika ada cart tapi tidak POST, user diarahkan ke halaman keranjang untuk mengisi form.
+    // Redirect ke cart.php jika tidak ada POST
     header('Location: cart.php'); 
     exit;
 }
@@ -176,7 +185,7 @@ if (empty($cart)) {
 </head>
 <body>
 <header>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <nav class="navbar navbar-expand-lg <?= $nav_class ?> shadow-sm">
         <div class="container">
             <a class="navbar-brand" href="/TokoBook/index.php">TokoBook</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">

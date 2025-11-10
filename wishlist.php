@@ -1,19 +1,42 @@
 <?php
-session_start();
-require_once __DIR__ . '/db.php';
+session_start(); 
+require_once __DIR__.'/db.php';
 
-// Wajib login untuk melihat wishlist
-if (!isset($_SESSION['user'])) {
-    header('Location: login.php');
-    exit;
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+const FEATURE_WISHLIST = false;        // Menyembunyikan link Wishlist (di Navbar)
+// **********************************************************
+
+
+// --- Login Check ---
+if (!isset($_SESSION['user'])) { 
+    header('Location: login.php'); 
+    exit; 
 }
 $user_id = $_SESSION['user']['id'];
 
-// --- Theme Logic (Consistent) ---
-$is_logged_in = true;
+// --- Dark mode detection & Toggle Logic (KONDISIONAL) ---
+$current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
+
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+    $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
+
+    if (isset($pdo)) {
+        $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
+        $update_stmt->execute([$new_db_mode, $user_id]);
+        $_SESSION['user']['theme_mode'] = $new_db_mode;
+    }
+    
+    // Redirect tanpa query string
+    header("Location: " . strtok($_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+
+// Re-check theme after potential toggle
 $is_dark_mode = ($_SESSION['user']['theme_mode'] ?? 0) == 1;
 $theme = $is_dark_mode ? 'dark' : 'light';
-$nav_class = $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary'; 
+$nav_class = $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary';
 
 
 // --- Wishlist Handler Logic (Jika ada aksi penghapusan langsung dari halaman ini) ---
@@ -79,16 +102,23 @@ $wishlist_items = $wishlist_stmt->fetchAll(PDO::FETCH_ASSOC);
                     <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
                     <li class="nav-item"><a class="nav-link" href="contact.php">Contact</a></li>
                     <li class="nav-item"><a class="nav-link" href="cart.php">Cart</a></li>
+                    
+                    <?php if (FEATURE_WISHLIST): ?>
                     <li class="nav-item"><a class="nav-link active" href="wishlist.php">Wishlist</a></li>
+                    <?php endif; ?>
+                    
                     <?php if ($_SESSION['user']['role'] === 'admin'): ?>
                         <li class="nav-item"><a class="nav-link" href="admin/dashboard.php">Admin</a></li>
                     <?php endif; ?>
                     <li class="nav-item"><a class="nav-link" href="logout.php">Logout (<?= htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
                 </ul>
             </div>
         </div>
@@ -130,7 +160,7 @@ $wishlist_items = $wishlist_stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <p class="mb-1 text-muted">Oleh: <?= htmlspecialchars($item['author']); ?></p>
                                     <p class="mb-0 fw-bold text-success">Rp <?= number_format($item['price'], 2, ',', '.'); ?></p>
                                     <?php if ($item['stock'] == 0): ?>
-                                         <span class="badge bg-danger">Stok Habis</span>
+                                            <span class="badge bg-danger">Stok Habis</span>
                                     <?php endif; ?>
                                 </div>
                             </div>

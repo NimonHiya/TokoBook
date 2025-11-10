@@ -3,6 +3,12 @@ session_start();
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/csrf.php';
 
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
+
 if (!isset($_SESSION['user'])) { header('Location: login.php'); exit; }
 
 $user_id = $_SESSION['user']['id'];

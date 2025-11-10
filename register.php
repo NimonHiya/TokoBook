@@ -2,10 +2,17 @@
 session_start();
 require_once __DIR__ . '/db.php';
 
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
+
 // --- Dark mode detection & Toggle Logic ---
 $is_logged_in = isset($_SESSION['user']);
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+// LOGIKA PHP UNTUK TOGGLE DIHAPUS JIKA FITUR DIMATIKAN
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     if ($is_logged_in) {
         $user_id = $_SESSION['user']['id'];
         $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
@@ -38,7 +45,7 @@ $theme = $is_dark_mode ? 'dark' : 'light';
 $errors = [];
 $username = '';
 $email = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $username = trim($_POST['username']);
     $email = trim($_POST['email']);
     $password = $_POST['password'];
@@ -64,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($e->getCode() === '23000') {
                 $errors[] = 'Username or email already taken.';
             } else {
-                 $errors[] = 'Registration failed due to a database error.';
+                $errors[] = 'Registration failed due to a database error.';
             }
         }
     }
@@ -159,11 +166,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <li class="nav-item"><a class="nav-link" href="contact.php">Contact</a></li>
                     <li class="nav-item"><a class="nav-link active" aria-current="page" href="register.php">Register</a></li>
                     <li class="nav-item"><a class="nav-link" href="login.php">Login</a></li>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
                 </ul>
             </div>
         </div>

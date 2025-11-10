@@ -2,10 +2,45 @@
 session_start();
 require_once __DIR__ . '/db.php';
 
-// --- THEME & LOGIN CHECK ---
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+const FEATURE_RATING_REVIEW = false;   // Menyembunyikan rating, review list, dan logic fetch
+const FEATURE_WISHLIST = false;        // Menyembunyikan tombol Wishlist dan logic check
+// **********************************************************
+
+
+// --- Dark mode detection & Toggle Logic ---
 $is_logged_in = isset($_SESSION['user']);
-// Logika Dark Mode Hybrid: prioritaskan preferensi user login, fallback ke cookie
-$is_dark_mode = $is_logged_in ? ($_SESSION['user']['theme_mode'] ?? 0) == 1 : ($_COOKIE['theme'] ?? 'light') === 'dark';
+
+// LOGIKA PHP UNTUK TOGGLE DIHAPUS JIKA FITUR DIMATIKAN
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+    if ($is_logged_in) {
+        $user_id = $_SESSION['user']['id'];
+        $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
+        $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
+        
+        if (isset($pdo)) {
+            $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
+            $update_stmt->execute([$new_db_mode, $user_id]);
+            $_SESSION['user']['theme_mode'] = $new_db_mode;
+        }
+    } else {
+        if (isset($_COOKIE['theme']) && $_COOKIE['theme'] === 'dark') {
+            setcookie('theme', 'light', time() + (86400 * 30), '/');
+        } else {
+            setcookie('theme', 'dark', time() + (86400 * 30), '/');
+        }
+    }
+    header("Location: " . strtok($_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+
+if ($is_logged_in) {
+    $is_dark_mode = ($_SESSION['user']['theme_mode'] ?? 0) == 1;
+} else {
+    $is_dark_mode = ($_COOKIE['theme'] ?? 'light') === 'dark';
+}
 $theme = $is_dark_mode ? 'dark' : 'light';
 $nav_class = $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary'; 
 $card_color = $is_dark_mode ? '#1e1e1e' : '#ffffff';
@@ -17,53 +52,55 @@ $stmt->execute([':id'=>$id]);
 $book = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$book){
-    // Pesan jika buku tidak ditemukan
     die('Book not found');
 }
 
 $user_id = $is_logged_in ? $_SESSION['user']['id'] : null;
 $is_in_wishlist = false;
 
-// --- CHECK WISHLIST STATUS ---
-if ($user_id) {
+// --- CHECK WISHLIST STATUS (KONDISIONAL) ---
+if (FEATURE_WISHLIST && $user_id) {
     $wish_stmt = $pdo->prepare('SELECT 1 FROM wishlist WHERE user_id = ? AND book_id = ?');
     $wish_stmt->execute([$user_id, $book['id']]);
     $is_in_wishlist = $wish_stmt->fetchColumn();
 }
 
-// --- FETCH REVIEWS AND AVERAGE RATING ---
-$reviews_stmt = $pdo->prepare('
-    SELECT r.rating, r.review_text, r.created_at, u.username 
-    FROM reviews r 
-    JOIN users u ON r.user_id = u.id 
-    WHERE r.book_id = :bid 
-    ORDER BY r.created_at DESC
-');
-$reviews_stmt->execute([':bid' => $book['id']]);
-$reviews = $reviews_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$total_reviews = count($reviews);
+// --- FETCH REVIEWS AND AVERAGE RATING (KONDISIONAL) ---
+$total_reviews = 0;
 $average_rating = 0;
+$reviews = [];
 
-if ($total_reviews > 0) {
-    $sum_ratings = array_sum(array_column($reviews, 'rating'));
-    $average_rating = round($sum_ratings / $total_reviews, 1);
-}
+if (FEATURE_RATING_REVIEW) {
+    $reviews_stmt = $pdo->prepare('
+        SELECT r.rating, r.review_text, r.created_at, u.username 
+        FROM reviews r 
+        JOIN users u ON r.user_id = u.id 
+        WHERE r.book_id = :bid 
+        ORDER BY r.created_at DESC
+    ');
+    $reviews_stmt->execute([':bid' => $book['id']]);
+    $reviews = $reviews_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Helper function to display stars
-function display_stars($rating) {
-    $stars = '';
-    // Memastikan rating dibulatkan ke bawah untuk tampilan bintang penuh
-    $full_stars = floor($rating);
-    
-    for ($i = 1; $i <= 5; $i++) {
-        if ($i <= $full_stars) {
-            $stars .= '★'; // Bintang terisi
-        } else {
-            $stars .= '☆'; // Bintang kosong
-        }
+    $total_reviews = count($reviews);
+    if ($total_reviews > 0) {
+        $sum_ratings = array_sum(array_column($reviews, 'rating'));
+        $average_rating = round($sum_ratings / $total_reviews, 1);
     }
-    return $stars;
+
+    // Helper function to display stars
+    function display_stars($rating) {
+        $stars = '';
+        $full_stars = floor($rating);
+        
+        for ($i = 1; $i <= 5; $i++) {
+            if ($i <= $full_stars) {
+                $stars .= '★'; // Bintang terisi
+            } else {
+                $stars .= '☆'; // Bintang kosong
+            }
+        }
+        return $stars;
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -134,7 +171,11 @@ function display_stars($rating) {
                     <li class="nav-item"><a class="nav-link" href="contact.php">Contact</a></li>
                     <?php if ($is_logged_in): ?>
                         <li class="nav-item"><a class="nav-link" href="cart.php">Cart</a></li>
+                        
+                        <?php if (FEATURE_WISHLIST): ?>
                         <li class="nav-item"><a class="nav-link" href="wishlist.php">Wishlist</a></li>
+                        <?php endif; ?>
+                        
                         <?php if ($_SESSION['user']['role']==='admin'): ?>
                             <li class="nav-item"><a class="nav-link" href="admin/dashboard.php">Admin</a></li>
                         <?php endif; ?>
@@ -142,6 +183,14 @@ function display_stars($rating) {
                     <?php else: ?>
                         <li class="nav-item"><a class="nav-link" href="register.php">Register</a></li>
                         <li class="nav-item"><a class="nav-link" href="login.php">Login</a></li>
+                    <?php endif; ?>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
+                    <li class="nav-item">
+                        <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
+                            <?= $theme === 'dark' ? '☀️' : '🌙' ?>
+                        </a>
+                    </li>
                     <?php endif; ?>
                 </ul>
             </div>
@@ -163,16 +212,18 @@ function display_stars($rating) {
                 <div class="card-body">
                     <h2 class="card-title mb-4 text-primary"><?php echo htmlspecialchars($book['title']); ?></h2>
                     
-                    <?php if ($total_reviews > 0): ?>
-                        <div class="d-flex align-items-center mb-3">
-                            <h4 class="me-2 mb-0 text-warning fw-bold"><?= $average_rating; ?></h4>
-                            <span class="text-warning rating-stars-display me-3 h5 mb-0">
-                                <?= display_stars($average_rating); ?>
-                            </span>
-                            <small class="text-muted">(<?= $total_reviews; ?> Ulasan)</small>
-                        </div>
-                    <?php else: ?>
-                        <p class="text-muted">Belum ada ulasan.</p>
+                    <?php if (FEATURE_RATING_REVIEW): ?>
+                        <?php if ($total_reviews > 0): ?>
+                            <div class="d-flex align-items-center mb-3">
+                                <h4 class="me-2 mb-0 text-warning fw-bold"><?= $average_rating; ?></h4>
+                                <span class="text-warning rating-stars-display me-3 h5 mb-0">
+                                    <?= display_stars($average_rating); ?>
+                                </span>
+                                <small class="text-muted">(<?= $total_reviews; ?> Ulasan)</small>
+                            </div>
+                        <?php else: ?>
+                            <p class="text-muted">Belum ada ulasan.</p>
+                        <?php endif; ?>
                     <?php endif; ?>
                     
                     <p class="card-text"><strong>Penulis:</strong> <?php echo htmlspecialchars($book['author']); ?></p>
@@ -209,12 +260,14 @@ function display_stars($rating) {
                                 </form>
                             <?php endif; ?>
                             
+                            <?php if (FEATURE_WISHLIST): ?>
                             <a href="wishlist_handler.php?book_id=<?= $book['id']; ?>&action=<?= $is_in_wishlist ? 'remove' : 'add'; ?>" 
                                class="btn btn-outline-danger btn-wishlist <?= $is_in_wishlist ? 'active' : ''; ?>"
                                title="<?= $is_in_wishlist ? 'Hapus dari Wishlist' : 'Tambah ke Wishlist'; ?>">
                                 
                                 <?= $is_in_wishlist ? '❤️ Di Wishlist' : '🤍 Tambah ke Wishlist'; ?>
                             </a>
+                            <?php endif; ?>
                         </div>
                         
                         <?php if (!empty($_SESSION['flash'])): ?>
@@ -224,12 +277,16 @@ function display_stars($rating) {
                     <?php else: ?>
                         <p class="mt-4">
                             <a href="login.php" class="btn btn-primary">Login untuk Beli</a>
+                            
+                            <?php if (FEATURE_WISHLIST): ?>
                             <a href="login.php" class="btn btn-outline-danger btn-wishlist" title="Login untuk Wishlist">
                                 🤍 Wishlist
                             </a>
+                            <?php endif; ?>
                         </p>
                     <?php endif; ?>
                     
+                    <?php if (FEATURE_RATING_REVIEW): ?>
                     <div class="mt-5 border-top pt-4">
                         <h4 class="mb-3 text-primary">Daftar Ulasan (<?= $total_reviews; ?>)</h4>
                         
@@ -254,6 +311,7 @@ function display_stars($rating) {
                             </div>
                         <?php endif; ?>
                     </div>
+                    <?php endif; ?>
                     
                     <div class="text-center mt-4">
                         <a href="index.php" class="btn btn-outline-secondary">Kembali ke Beranda</a>

@@ -1,6 +1,12 @@
 <?php
-session_start(); 
-require_once __DIR__.'/../db.php';
+session_start();
+require_once __DIR__ . '/../db.php';
+
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
 
 // --- Login Check & Theme Detection ---
 if (!isset($_SESSION['user']) || $_SESSION['user']['role']!=='admin') { 
@@ -9,11 +15,11 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role']!=='admin') {
 }
 $user_id = $_SESSION['user']['id'];
 
-// --- Dark mode detection & Toggle Logic ---
-$is_logged_in = true; // Sudah pasti admin
+// --- Dark mode detection & Toggle Logic (KONDISIONAL) ---
+$is_logged_in = true; 
 $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
     if (isset($pdo)) {
         $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
@@ -58,7 +64,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
         $orig = basename($_FILES['image']['name']);
         $ext = pathinfo($orig, PATHINFO_EXTENSION);
         $imageName = uniqid('book_') . '.' . $ext;
-        move_uploaded_file($tmp, __DIR__ . '/../assets/images/' . $imageName);
+        // PENTING: Perlu dipastikan direktori '../assets/images/' ada dan dapat ditulis
+        move_uploaded_file($tmp, __DIR__ . '/../assets/images/' . $imageName); 
     }
     $category_id = !empty($_POST['category_id']) ? intval($_POST['category_id']) : null;
     $stock = isset($_POST['stock']) ? intval($_POST['stock']) : 0;
@@ -140,23 +147,23 @@ $categories = $pdo->query('SELECT id,name FROM categories ORDER BY name')->fetch
         }
          body.dark-mode .form-control,
          body.dark-mode .form-select,
-         body.dark-mode .form-control[type="file"] { 
-            background-color: #2b2b2b; 
-            color: #f1f1f1; 
-            border: 1px solid #444; 
-         }
-         body.dark-mode .form-control:focus { 
-            background-color: #222; 
-            border-color: #0d6efd; 
-         }
-         /* File input text color fix for dark mode */
-         body.dark-mode .form-control[type="file"]::file-selector-button {
+         body.dark-mode textarea { 
+             background-color: #2b2b2b; 
+             color: #f1f1f1; 
+             border: 1px solid #444; 
+           }
+           body.dark-mode .form-control:focus { 
+             background-color: #222; 
+             border-color: #0d6efd; 
+           }
+           /* File input text color fix for dark mode */
+           body.dark-mode .form-control[type="file"]::file-selector-button {
              background-color: #333;
              color: #f5f5f5;
              border-right: 1px solid #444;
-         }
+           }
         
-        @media (max-width: 991.98px) { .sidebar { min-height: auto; } }
+         @media (max-width: 991.98px) { .sidebar { min-height: auto; } }
     </style>
 </head>
 <body class="<?= $theme === 'dark' ? 'dark-mode' : '' ?>">
@@ -174,11 +181,15 @@ $categories = $pdo->query('SELECT id,name FROM categories ORDER BY name')->fetch
                     <li class="nav-item"><a class="nav-link" href="../contact.php">Contact</a></li>
                     <li class="nav-item"><a class="nav-link" href="../cart.php">Cart</a></li>
                     <li class="nav-item"><a class="nav-link active" aria-current="page" href="dashboard.php">Admin</a></li>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    
                     <li class="nav-item"><a class="nav-link" href="../logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                 </ul>
             </div>

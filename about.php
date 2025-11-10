@@ -2,6 +2,14 @@
 session_start();
 require_once __DIR__ . '/db.php';
 
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+const FEATURE_ABOUT_CONTENT = false;   // Menyembunyikan fitur Read More/Less (konten panjang)
+const FEATURE_PRODUCT_LISTING = false; // Menyembunyikan daftar buku Rekomendasi/Pagination
+// **********************************************************
+
+
 // -------------------------
 // CEK LOGIN DAN STATUS THEME
 // -------------------------
@@ -13,9 +21,9 @@ if ($is_logged_in) {
 }
 
 // -------------------------
-// TOGGLE THEME MODE
+// TOGGLE THEME MODE (Hanya jika FEATURE_THEME_TOGGLE = true)
 // -------------------------
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     if ($is_logged_in) {
         $user_id = $_SESSION['user']['id'];
         $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
@@ -54,36 +62,50 @@ $about_title = file_exists($about_title_file) ? file_get_contents($about_title_f
 $about_image = file_exists($about_image_file) ? trim(file_get_contents($about_image_file)) : 'toko.jpg';
 
 // -------------------------
-// POTONG KONTEN
+// POTONG KONTEN (Hanya dijalankan jika fitur About aktif)
 // -------------------------
-$cut_length = 300;
-$long_narration_available = strlen($content) > $cut_length;
+if (FEATURE_ABOUT_CONTENT) {
+    $cut_length = 300;
+    $long_narration_available = strlen($content) > $cut_length;
+    $short_content = substr($content, 0, $cut_length);
+    $remaining_content = $long_narration_available ? substr($content, $cut_length) : '';
+} else {
+    // Jika fitur dinonaktifkan, gunakan konten penuh/standar
+    $short_content = $content;
+    $long_narration_available = false;
+    $remaining_content = '';
+}
 
-$short_content = substr($content, 0, $cut_length);
-$remaining_content = $long_narration_available ? substr($content, $cut_length) : '';
 
 // -------------------------
-// PAGINATION
+// PAGINATION & FETCH BOOKS (Hanya jika fitur aktif)
 // -------------------------
-$items_per_page = 4;
-$current_page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
+if (FEATURE_PRODUCT_LISTING) {
+    $items_per_page = 4;
+    $current_page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
 
-$sql_count = 'SELECT COUNT(id) FROM books';
-$total_items = $pdo->query($sql_count)->fetchColumn();
-$total_pages = ceil($total_items / $items_per_page);
-$current_page = max(1, min($current_page, $total_pages > 0 ? $total_pages : 1));
-$offset = ($current_page - 1) * $items_per_page;
+    $sql_count = 'SELECT COUNT(id) FROM books';
+    $total_items = $pdo->query($sql_count)->fetchColumn();
+    $total_pages = ceil($total_items / $items_per_page);
+    $current_page = max(1, min($current_page, $total_pages > 0 ? $total_pages : 1));
+    $offset = ($current_page - 1) * $items_per_page;
 
-$sql_books = 'SELECT b.*, c.name as category_name 
-              FROM books b 
-              LEFT JOIN categories c ON b.category_id = c.id
-              ORDER BY b.id DESC 
-              LIMIT :limit OFFSET :offset';
-$stmt_books = $pdo->prepare($sql_books);
-$stmt_books->bindParam(':limit', $items_per_page, PDO::PARAM_INT);
-$stmt_books->bindParam(':offset', $offset, PDO::PARAM_INT);
-$stmt_books->execute();
-$books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
+    $sql_books = 'SELECT b.*, c.name as category_name 
+                FROM books b 
+                LEFT JOIN categories c ON b.category_id = c.id
+                ORDER BY b.id DESC 
+                LIMIT :limit OFFSET :offset';
+    $stmt_books = $pdo->prepare($sql_books);
+    $stmt_books->bindParam(':limit', $items_per_page, PDO::PARAM_INT);
+    $stmt_books->bindParam(':offset', $offset, PDO::PARAM_INT);
+    $stmt_books->execute();
+    $books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $books_on_page = [];
+    $total_pages = 0;
+    $current_page = 1;
+    $total_items = 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -164,11 +186,14 @@ $books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
                         <li class="nav-item"><a class="nav-link" href="register.php">Register</a></li>
                         <li class="nav-item"><a class="nav-link" href="login.php">Login</a></li>
                     <?php endif; ?>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
                 </ul>
             </div>
         </div>
@@ -190,68 +215,80 @@ $books_on_page = $stmt_books->fetchAll(PDO::FETCH_ASSOC);
             <h2 class="mb-3 text-secondary">Kisah Kami</h2>
             <div class="about-content card p-4 shadow-sm mb-5 <?= $is_dark_mode ? 'dark-mode-card' : '' ?>">
                 <p class="lead">
-                    <?php echo nl2br(htmlspecialchars($short_content)); ?>
-                    <?php if ($long_narration_available): ?>
-                        <span id="dots">...</span>
-                        <span id="more-text" style="display: none;"><?php echo nl2br(htmlspecialchars($remaining_content)); ?></span>
-                    <?php endif; ?>
+                    <?php 
+                    // FITUR DISEMBUYIKAN: KONTEN DINAMIS (READ MORE/LESS)
+                    if (FEATURE_ABOUT_CONTENT):
+                        echo nl2br(htmlspecialchars($short_content)); 
+                        if ($long_narration_available): ?>
+                            <span id="dots">...</span>
+                            <span id="more-text" style="display: none;"><?php echo nl2br(htmlspecialchars($remaining_content)); ?></span>
+                        <?php endif;
+                    else: 
+                        // Konten Penuh/Standar jika fitur Read More dimatikan
+                        echo nl2br(htmlspecialchars($content));
+                    endif;
+                    ?>
                 </p>
-                <?php if ($long_narration_available): ?>
+                
+                <?php if (FEATURE_ABOUT_CONTENT && $long_narration_available): ?>
                     <button onclick="readMoreLess()" id="read-more-btn" class="btn btn-link p-0 text-start text-primary fw-bold">
                         Baca Selengkapnya
                     </button>
                 <?php endif; ?>
             </div>
 
-            <h2 class="mb-4 text-success">Rekomendasi Buku</h2>
-            <?php if ($total_items > 0): ?>
-                <div class="row row-cols-1 row-cols-md-4 g-4 mb-4">
-                    <?php foreach ($books_on_page as $book): ?>
-                        <div class="col">
-                            <div class="card book-card shadow-sm <?= $is_dark_mode ? 'dark-mode-card' : '' ?>">
-                                <?php 
-                                    $imagePath = !empty($book['image']) && file_exists(__DIR__ . '/assets/images/' . $book['image']) 
-                                        ? 'assets/images/' . htmlspecialchars($book['image']) 
-                                        : 'https://via.placeholder.com/300x400?text=' . urlencode(htmlspecialchars($book['title']));
-                                ?>
-                                <img src="<?php echo $imagePath; ?>" class="card-img-top book-img" alt="<?php echo htmlspecialchars($book['title']); ?>">
-                                <div class="card-body">
-                                    <h5 class="card-title"><?php echo htmlspecialchars($book['title']); ?></h5>
-                                    <p class="card-text text-muted small">Oleh: <?php echo htmlspecialchars($book['author']); ?></p>
-                                    <?php if (!empty($book['category_name'])): ?>
-                                        <p class="card-text"><span class="badge bg-info text-dark"><?php echo htmlspecialchars($book['category_name']); ?></span></p>
-                                    <?php endif; ?>
-                                    <a href="book_detail.php?id=<?php echo $book['id']; ?>" class="btn btn-sm btn-outline-success">Lihat Detail</a>
+            <!-- <h2 class="mb-4 text-success">Rekomendasi Buku</h2> -->
+            
+            <?php if (FEATURE_PRODUCT_LISTING): ?>
+                <?php if ($total_items > 0): ?>
+                    <div class="row row-cols-1 row-cols-md-4 g-4 mb-4">
+                        <?php foreach ($books_on_page as $book): ?>
+                            <div class="col">
+                                <div class="card book-card shadow-sm <?= $is_dark_mode ? 'dark-mode-card' : '' ?>">
+                                    <?php 
+                                        $imagePath = !empty($book['image']) && file_exists(__DIR__ . '/assets/images/' . $book['image']) 
+                                            ? 'assets/images/' . htmlspecialchars($book['image']) 
+                                            : 'https://via.placeholder.com/300x400?text=' . urlencode(htmlspecialchars($book['title']));
+                                    ?>
+                                    <img src="<?php echo $imagePath; ?>" class="card-img-top book-img" alt="<?php echo htmlspecialchars($book['title']); ?>">
+                                    <div class="card-body">
+                                        <h5 class="card-title"><?php echo htmlspecialchars($book['title']); ?></h5>
+                                        <p class="card-text text-muted small">Oleh: <?php echo htmlspecialchars($book['author']); ?></p>
+                                        <?php if (!empty($book['category_name'])): ?>
+                                            <p class="card-text"><span class="badge bg-info text-dark"><?php echo htmlspecialchars($book['category_name']); ?></span></p>
+                                        <?php endif; ?>
+                                        <a href="book_detail.php?id=<?php echo $book['id']; ?>" class="btn btn-sm btn-outline-success">Lihat Detail</a>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
+                        <?php endforeach; ?>
+                    </div>
 
-                <?php if ($total_pages > 1): ?>
-                    <nav aria-label="Book page navigation">
-                        <ul class="pagination justify-content-center">
-                            <li class="page-item <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?page=<?php echo $current_page - 1; ?>" aria-label="Previous">
-                                    <span aria-hidden="true">&laquo; Sebelumnya</span>
-                                </a>
-                            </li>
-                            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                                <li class="page-item <?php echo ($current_page == $i) ? 'active' : ''; ?>">
-                                    <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                    <?php if ($total_pages > 1): ?>
+                        <nav aria-label="Book page navigation">
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="?page=<?php echo $current_page - 1; ?>" aria-label="Previous">
+                                        <span aria-hidden="true">&laquo; Sebelumnya</span>
+                                    </a>
                                 </li>
-                            <?php endfor; ?>
-                            <li class="page-item <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>">
-                                <a class="page-link" href="?page=<?php echo $current_page + 1; ?>" aria-label="Next">
-                                    <span aria-hidden="true">Berikutnya &raquo;</span>
-                                </a>
-                            </li>
-                        </ul>
-                    </nav>
+                                <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                                    <li class="page-item <?php echo ($current_page == $i) ? 'active' : ''; ?>">
+                                        <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                                    </li>
+                                <?php endfor; ?>
+                                <li class="page-item <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="?page=<?php echo $current_page + 1; ?>" aria-label="Next">
+                                        <span aria-hidden="true">Berikutnya &raquo;</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <div class="alert <?= $is_dark_mode ? 'alert-dark text-white' : 'alert-warning' ?> text-center border-0">Belum ada buku yang tersedia di database.</div>
                 <?php endif; ?>
-            <?php else: ?>
-                <div class="alert <?= $is_dark_mode ? 'alert-dark text-white' : 'alert-warning' ?> text-center border-0">Belum ada buku yang tersedia di database.</div>
-            <?php endif; ?>
+            <?php endif; // END FEATURE_PRODUCT_LISTING ?>
 
         </div>
     </div>

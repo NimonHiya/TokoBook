@@ -2,27 +2,30 @@
 session_start(); 
 require_once __DIR__.'/../db.php';
 
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
+
 // --- Login Check & Theme Detection ---
 if (!isset($_SESSION['user']) || $_SESSION['user']['role']!=='admin') { 
     header('Location: ../login.php'); 
     exit; 
 }
 $user_id = $_SESSION['user']['id'];
-$is_logged_in = true; // Sudah pasti login
+$is_logged_in = true; // Sudah pasti admin
 
-// --- Dark mode detection & Toggle Logic ---
+// --- Dark mode detection & Toggle Logic (KONDISIONAL) ---
 $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
-    // Logika Database: Toggle theme_mode di tabel users
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
-
     if (isset($pdo)) {
         $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
         $update_stmt->execute([$new_db_mode, $user_id]);
         $_SESSION['user']['theme_mode'] = $new_db_mode;
     }
-    
     header("Location: " . strtok($_SERVER['REQUEST_URI'], '?'));
     exit;
 }
@@ -50,7 +53,6 @@ try {
     $total_orders = $pdo->query('SELECT COUNT(id) FROM orders')->fetchColumn();
 
     // 4. Total Revenue (Total harga dari pesanan yang sudah Selesai/Paid - asumsi kolom status 'selesai' atau 'paid')
-    // Menggunakan SUM() dan memastikan kolom status ada di tabel orders
     $total_revenue_stmt = $pdo->prepare("SELECT SUM(total_price) FROM orders WHERE status = 'paid' OR status = 'selesai'");
     $total_revenue_stmt->execute();
     $total_revenue = $total_revenue_stmt->fetchColumn() ?? 0;
@@ -151,11 +153,15 @@ try {
                     <li class="nav-item"><a class="nav-link" href="../contact.php">Contact</a></li>
                     <li class="nav-item"><a class="nav-link" href="../cart.php">Cart</a></li>
                     <li class="nav-item"><a class="nav-link active" href="dashboard.php">Admin</a></li>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    
                     <li class="nav-item"><a class="nav-link" href="../logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                 </ul>
             </div>

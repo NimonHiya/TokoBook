@@ -1,17 +1,25 @@
 <?php
 session_start(); 
 require_once __DIR__.'/../db.php';
+
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
+
+// --- Login Check & Theme Detection ---
 if (!isset($_SESSION['user']) || $_SESSION['user']['role']!=='admin') { 
     header('Location: ../login.php'); 
     exit; 
 }
 $user_id = $_SESSION['user']['id'];
 
-// --- Dark mode detection & Toggle Logic ---
-$is_logged_in = true; // Sudah pasti admin
+// --- Dark mode detection & Toggle Logic (KONDISIONAL) ---
+$is_logged_in = true; 
 $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
     if (isset($pdo)) {
         $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
@@ -28,6 +36,20 @@ $theme = $is_dark_mode ? 'dark' : 'light';
 $nav_class = $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary'; 
 $sidebar_color = $is_dark_mode ? '#1e1e1e' : '#f8f9fa';
 $card_color = $is_dark_mode ? '#1e1e1e' : '#ffffff';
+
+// Ensure categories table and category_id column exist (safe for dev)
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS categories (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100) NOT NULL UNIQUE)");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE books ADD COLUMN category_id INT DEFAULT NULL");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE books ADD COLUMN stock INT DEFAULT 0");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE books ADD CONSTRAINT fk_books_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL");
+} catch (Exception $e) {}
 
 
 // --- Delete Logic ---
@@ -128,14 +150,14 @@ $categories = $pdo->query('SELECT id, name FROM categories ORDER BY name')->fetc
         }
          body.dark-mode .form-control,
          body.dark-mode .form-select { 
-            background-color: #2b2b2b; 
-            color: #f1f1f1; 
-            border: 1px solid #444; 
-         }
-         body.dark-mode .form-control:focus { 
-            background-color: #222; 
-            border-color: #0d6efd; 
-         }
+             background-color: #2b2b2b; 
+             color: #f1f1f1; 
+             border: 1px solid #444; 
+           }
+           body.dark-mode .form-control:focus { 
+             background-color: #222; 
+             border-color: #0d6efd; 
+           }
 
         /* TABLE ADAPTATION */
         body.dark-mode .table {
@@ -173,11 +195,15 @@ $categories = $pdo->query('SELECT id, name FROM categories ORDER BY name')->fetc
                     <li class="nav-item"><a class="nav-link" href="../contact.php">Contact</a></li>
                     <li class="nav-item"><a class="nav-link" href="../cart.php">Cart</a></li>
                     <li class="nav-item"><a class="nav-link active" aria-current="page" href="dashboard.php">Admin</a></li>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    
                     <li class="nav-item"><a class="nav-link" href="../logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                 </ul>
             </div>
@@ -227,7 +253,7 @@ $categories = $pdo->query('SELECT id, name FROM categories ORDER BY name')->fetc
                         <h4 class="mb-3">Daftar Kategori (Total: <?php echo count($categories); ?>)</h4>
                         
                         <?php if (empty($categories)): ?>
-                             <div class="alert alert-info border-0">Belum ada kategori.</div>
+                            <div class="alert alert-info border-0">Belum ada kategori.</div>
                         <?php else: ?>
                             <div class="table-responsive">
                                 <table class="table table-hover <?= $is_dark_mode ? 'table-dark' : '' ?>">

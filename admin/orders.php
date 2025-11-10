@@ -1,19 +1,27 @@
 <?php
-session_start();
-require_once __DIR__ . '/../db.php';
-// require_once __DIR__ . '/../csrf.php'; // Asumsi CSRF tidak diperlukan di halaman Admin GET/POST sederhana ini
+session_start(); 
+require_once __DIR__.'/../db.php';
 
-// --- Login Check ---
-if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
-    header('Location: ../login.php');
-    exit;
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+const FEATURE_SEARCH_FILTER = false;   // Menyembunyikan form pencarian/filter
+const FEATURE_ORDER_TRACKING = false;  // Menyembunyikan modal pengiriman dan tampilan resi
+// **********************************************************
+
+
+// --- Login Check & Theme Detection ---
+if (!isset($_SESSION['user']) || $_SESSION['user']['role']!=='admin') { 
+    header('Location: ../login.php'); 
+    exit; 
 }
 $user_id = $_SESSION['user']['id'];
+$is_logged_in = true; // Sudah pasti admin
 
-// --- Dark mode detection & Toggle Logic ---
+// --- Dark mode detection & Toggle Logic (KONDISIONAL) ---
 $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
     if (isset($pdo)) {
         $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
@@ -33,17 +41,20 @@ $card_color = $is_dark_mode ? '#1e1e1e' : '#ffffff';
 
 
 // ==== PROSES UPDATE STATUS / CANCEL ORDER (FLOW LOGIS) ====
+// Catatan: Logika PHP ini tetap dijalankan di background, tetapi pemicunya (POST/GET) 
+// akan dikontrol oleh FEATURE_ORDER_TRACKING.
 
 // Mark Shipped (POST dengan Catatan)
 if (isset($_POST['action']) && $_POST['action'] === 'mark_shipped_with_note') { 
-    $orderId = (int)$_POST['order_id'];
-    $shippingNote = htmlspecialchars($_POST['tracking_number']) . " | " . htmlspecialchars($_POST['shipping_note'] ?? '');
-    
-    $stmt = $pdo->prepare("UPDATE orders SET status = 'shipped', shipping_note = ? WHERE id = ?");
-    $stmt->execute([$shippingNote, $orderId]);
-
-    header("Location: orders.php?user_id=" . ($_POST['current_user_id'] ?? '') . "&success=shipped");
-    exit;
+    if (FEATURE_ORDER_TRACKING) { // Hanya proses jika fitur aktif
+        $orderId = (int)$_POST['order_id'];
+        $shippingNote = htmlspecialchars($_POST['tracking_number']) . " | " . htmlspecialchars($_POST['shipping_note'] ?? '');
+        
+        $stmt = $pdo->prepare("UPDATE orders SET status = 'shipped', shipping_note = ? WHERE id = ?");
+        $stmt->execute([$shippingNote, $orderId]);
+        header("Location: orders.php?user_id=" . ($_POST['current_user_id'] ?? '') . "&success=shipped");
+        exit;
+    }
 }
 
 // Mark Complete: Dipanggil ketika statusnya DITERIMA
@@ -80,27 +91,28 @@ $users = $pdo->query("
 
 $selectedUser = isset($_GET['user_id']) ? (int)$_GET['user_id'] : ($users[0]['id'] ?? 0);
 
-// ==== INPUT FILTER & PAGINATION ====
+// ==== INPUT FILTER & PAGINATION (KONDISIONAL) ====
 $perPage = 5;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $perPage;
 
-$status_filter = isset($_GET['status']) ? $_GET['status'] : ''; // NEW: Filter Status
-$search_query = isset($_GET['q']) ? trim($_GET['q']) : ''; // NEW: Search Query
-
+$status_filter = '';
+$search_query = '';
 $where = ['o.user_id = ?'];
 $params = [$selectedUser];
 
-// Filter berdasarkan status
-if (!empty($status_filter)) {
-    $where[] = 'o.status = ?';
-    $params[] = $status_filter;
-}
-
-// Filter berdasarkan pencarian buku
-if (!empty($search_query)) {
-    $where[] = 'b.title LIKE ?';
-    $params[] = '%' . $search_query . '%';
+if (FEATURE_SEARCH_FILTER) { // Jika filtering aktif
+    $status_filter = isset($_GET['status']) ? $_GET['status'] : ''; 
+    $search_query = isset($_GET['q']) ? trim($_GET['q']) : ''; 
+    
+    if (!empty($status_filter)) {
+        $where[] = 'o.status = ?';
+        $params[] = $status_filter;
+    }
+    if (!empty($search_query)) {
+        $where[] = 'b.title LIKE ?';
+        $params[] = '%' . $search_query . '%';
+    }
 }
 
 $whereSql = ' WHERE ' . implode(' AND ', $where);
@@ -283,12 +295,19 @@ $statusList = [
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link" href="../index.php">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="../about.php">About</a></li>
+                    <li class="nav-item"><a class="nav-link" href="../contact.php">Contact</a></li>
+                    <li class="nav-item"><a class="nav-link" href="../cart.php">Cart</a></li>
                     <li class="nav-item"><a class="nav-link active" href="dashboard.php">Admin</a></li>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    
                     <li class="nav-item"><a class="nav-link" href="../logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                 </ul>
             </div>
@@ -352,6 +371,7 @@ $statusList = [
                         (Total: <?php echo $totalOrders; ?>)
                     </h5>
                     
+                    <?php if (FEATURE_SEARCH_FILTER): ?>
                     <form method="get" class="row g-2 mb-4 align-items-center">
                         <input type="hidden" name="user_id" value="<?= $selectedUser; ?>">
                         
@@ -379,6 +399,9 @@ $statusList = [
                             </div>
                         <?php endif; ?>
                     </form>
+                    <?php endif; // END FEATURE_SEARCH_FILTER ?>
+
+
                     <?php if (empty($orders)): ?>
                         <div class="alert alert-info mt-3 border-0">Tidak ada pesanan ditemukan untuk kriteria ini.</div>
                     <?php else: ?>
@@ -414,8 +437,8 @@ $statusList = [
                                                 elseif ($o['status'] == 'cancelled') $badge_class = 'bg-danger';
                                             ?>
                                             <span class="badge <?= $badge_class ?>"
-                                                  title="<?= ($o['status'] == 'shipped' && $o['shipping_note']) ? htmlspecialchars($o['shipping_note']) : ''; ?>"
-                                                  data-bs-toggle="<?= ($o['status'] == 'shipped' && $o['shipping_note']) ? 'tooltip' : ''; ?>"
+                                                  title="<?= (FEATURE_ORDER_TRACKING && $o['status'] == 'shipped' && $o['shipping_note']) ? htmlspecialchars($o['shipping_note']) : ''; ?>"
+                                                  data-bs-toggle="<?= (FEATURE_ORDER_TRACKING && $o['status'] == 'shipped' && $o['shipping_note']) ? 'tooltip' : ''; ?>"
                                                   data-bs-placement="top">
                                                 <?php echo htmlspecialchars(ucfirst($o['status'])); ?>
                                             </span>
@@ -428,6 +451,7 @@ $statusList = [
                                                     <span class="text-muted small">Menunggu Pembayaran User</span>
                                                     
                                                 <?php elseif ($o['status'] == 'paid'): ?>
+                                                    <?php if (FEATURE_ORDER_TRACKING): ?>
                                                     <button type="button" 
                                                             class="btn btn-sm btn-info text-dark"
                                                             data-bs-toggle="modal" 
@@ -437,6 +461,13 @@ $statusList = [
                                                             title="Masukkan nomor resi dan catatan">
                                                         Kirim
                                                     </button>
+                                                    <?php else: ?>
+                                                    <a href="?mark_shipped=<?php echo $o['id']; ?>&user_id=<?php echo $selectedUser; ?>" 
+                                                       class="btn btn-sm btn-info text-dark"
+                                                       onclick="return confirm('Tandai pesanan ini sebagai **DIKIRIM**?');">
+                                                        Kirim
+                                                    </a>
+                                                    <?php endif; ?>
                                                     
                                                 <?php elseif ($o['status'] == 'diterima'): ?>
                                                     <a href="?mark_complete=<?php echo $o['id']; ?>&user_id=<?php echo $selectedUser; ?>" 
@@ -491,6 +522,7 @@ $statusList = [
     </main>
 </div>
 
+<?php if (FEATURE_ORDER_TRACKING): ?>
 <div class="modal fade" id="shippingModal" tabindex="-1" aria-labelledby="shippingModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content <?= $is_dark_mode ? 'bg-dark text-light' : 'bg-light text-dark' ?>">
@@ -525,13 +557,6 @@ $statusList = [
         </div>
     </div>
 </div>
-<footer class="py-3 mt-5 <?= $is_dark_mode ? 'bg-dark text-light' : 'bg-light text-dark' ?>">
-    <div class="container text-center">
-        <p>&copy; <?php echo date('Y'); ?> TokoBook</p>
-    </div>
-</footer>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const shippingModal = document.getElementById('shippingModal');
@@ -541,18 +566,27 @@ $statusList = [
             const userId = button.getAttribute('data-user-id');
             
             const modalOrderIdInput = shippingModal.querySelector('#modal-order-id');
-            const modalCurrentUserIdInput = shippingModal.querySelector('input[name="current_user_id"]'); // Get the hidden user ID field
+            const modalCurrentUserIdInput = shippingModal.querySelector('input[name="current_user_id"]'); 
             
             modalOrderIdInput.value = orderId;
             modalCurrentUserIdInput.value = userId; 
         });
         
-        // Inisialisasi Tooltips (untuk menampilkan shipping_note saat status 'shipped' di tabel)
+        // Inisialisasi Tooltips 
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
           return new bootstrap.Tooltip(tooltipTriggerEl)
         })
     });
 </script>
+<?php endif; // END FEATURE_ORDER_TRACKING ?>
+
+<footer class="py-3 mt-5 <?= $is_dark_mode ? 'bg-dark text-light' : 'bg-light text-dark' ?>">
+    <div class="container text-center">
+        <p>&copy; <?php echo date('Y'); ?> TokoBook</p>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

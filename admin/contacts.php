@@ -1,19 +1,25 @@
 <?php
-session_start();
+session_start(); 
 require_once __DIR__.'/../db.php';
 
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
+
 // --- Login Check & Theme Detection ---
-if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
-    header('Location: ../login.php');
-    exit;
+if (!isset($_SESSION['user']) || $_SESSION['user']['role']!=='admin') { 
+    header('Location: ../login.php'); 
+    exit; 
 }
 $admin_id = $_SESSION['user']['id'];
 
-// --- Dark mode detection & Toggle Logic ---
+// --- Dark mode detection & Toggle Logic (KONDISIONAL) ---
 $is_logged_in = true; 
 $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
     if (isset($pdo)) {
         $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
@@ -121,6 +127,10 @@ $pdo->query('UPDATE contacts SET is_read = 1 WHERE is_read = 0');
         .modal-body .message-box { padding: 10px; background-color: <?= $is_dark_mode ? '#2a2a2a' : '#f1f1f1'; ?>; border-radius: 5px; margin-bottom: 15px; }
         .modal-body .reply-box { padding: 10px; border-left: 4px solid #198754; background-color: <?= $is_dark_mode ? '#1c3d3a' : '#d1e7dd'; ?>; color: <?= $is_dark_mode ? '#fff' : '#1a473b'; ?>; border-radius: 0 5px 5px 0; }
         .reply-form textarea { background-color: <?= $is_dark_mode ? '#2b2b2b' : '#fff'; ?>; color: <?= $is_dark_mode ? '#f5f5f5' : '#333'; ?>; border-color: <?= $is_dark_mode ? '#444' : '#ccc'; ?>; }
+        
+        /* Mengatasi button close di dark mode */
+        body.dark-mode .modal-header .btn-close,
+        body.dark-mode .alert .btn-close { filter: invert(1); }
     </style>
 </head>
 <body class="<?= $theme === 'dark' ? 'dark-mode' : '' ?>">
@@ -138,11 +148,15 @@ $pdo->query('UPDATE contacts SET is_read = 1 WHERE is_read = 0');
                     <li class="nav-item"><a class="nav-link" href="../contact.php">Contact</a></li>
                     <li class="nav-item"><a class="nav-link" href="../cart.php">Cart</a></li>
                     <li class="nav-item"><a class="nav-link active" href="dashboard.php">Admin</a></li>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    
                     <li class="nav-item"><a class="nav-link" href="../logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                 </ul>
             </div>
@@ -236,44 +250,44 @@ $pdo->query('UPDATE contacts SET is_read = 1 WHERE is_read = 0');
 </div>
 
 <div class="modal fade" id="replyModal" tabindex="-1" aria-labelledby="replyModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <form method="post" id="replyForm">
-        <div class="modal-header">
-          <h5 class="modal-title" id="replyModalLabel">Balas Pesan dari: <span id="modalUser"></span></h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <input type="hidden" name="reply_id" id="modalReplyId">
-          
-          <h6 class="text-secondary">Pesan Customer:</h6>
-          <div class="message-box">
-            <p id="modalMessage"></p>
-            <small class="text-muted d-block" id="modalSentAt"></small>
-          </div>
-          
-          <div id="existingReplySection" style="display:none;">
-            <h6 class="text-success">Balasan Anda Sebelumnya (<span id="modalRepliedAt"></span>):</h6>
-            <div class="reply-box mb-3">
-                <p id="modalExistingReply"></p>
-            </div>
-          </div>
-          
-          <h6 class="text-primary">Tulis Balasan Sekarang:</h6>
-          <textarea name="reply_message" id="modalReplyMessage" class="form-control" rows="5" placeholder="Masukkan balasan Anda di sini..."></textarea>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
-          <button type="submit" class="btn btn-primary">Kirim/Simpan Balasan</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="post" id="replyForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="replyModalLabel">Balas Pesan dari: <span id="modalUser"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="reply_id" id="modalReplyId">
+          
+          <h6 class="text-secondary">Pesan Customer:</h6>
+          <div class="message-box">
+            <p id="modalMessage"></p>
+            <small class="text-muted d-block" id="modalSentAt"></small>
+          </div>
+          
+          <div id="existingReplySection" style="display:none;">
+            <h6 class="text-success">Balasan Anda Sebelumnya (<span id="modalRepliedAt"></span>):</h6>
+            <div class="reply-box mb-3">
+                <p id="modalExistingReply"></p>
+            </div>
+          </div>
+          
+          <h6 class="text-primary">Tulis Balasan Sekarang:</h6>
+          <textarea name="reply_message" id="modalReplyMessage" class="form-control" rows="5" placeholder="Masukkan balasan Anda di sini..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+          <button type="submit" class="btn btn-primary">Kirim/Simpan Balasan</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 <footer class="py-3 mt-5 <?= $is_dark_mode ? 'bg-dark text-light' : 'bg-light text-dark' ?>">
-    <div class="container text-center">
-        <p>&copy; <?php echo date('Y'); ?> TokoBook</p>
-    </div>
+    <div class="container text-center">
+        <p>&copy; <?php echo date('Y'); ?> TokoBook</p>
+    </div>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -325,8 +339,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
     
-    // Sembunyikan badge setelah halaman dimuat
-    document.getElementById('messageBadge').style.display = 'none';
+    // Sembunyikan badge setelah halaman dimuat (tidak ada elemen badge di sini, tapi good practice)
+    // Cek jika badge notifikasi ada di sidebar dan sembunyikan jika sudah dibaca
+    const sidebarBadge = document.getElementById('messageBadge');
+    if (sidebarBadge) {
+        sidebarBadge.style.display = 'none';
+    }
 });
 </script>
 </body>

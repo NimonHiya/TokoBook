@@ -2,21 +2,26 @@
 session_start();
 require_once __DIR__ . '/db.php';
 
-// ==========================
-// THEME DETECTION
-// ==========================
+// --- Global Feature Toggles (AKTIFKAN FITUR DI SINI) ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = FALSE;     // <-- UBAH FALSE MENJADI TRUE
+// **********************************************************
+
+
+// -------------------------
+// CEK LOGIN DAN STATUS THEME
+// -------------------------
 $is_logged_in = isset($_SESSION['user']);
 if ($is_logged_in) {
     $is_dark_mode = ($_SESSION['user']['theme_mode'] ?? 0) == 1;
 } else {
     $is_dark_mode = ($_COOKIE['theme'] ?? 'light') === 'dark';
 }
-$theme = $is_dark_mode ? 'dark' : 'light';
 
-// ==========================
-// TOGGLE THEME MODE (Consistent Logic)
-// ==========================
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+// -------------------------
+// TOGGLE THEME MODE (Hanya jika FEATURE_THEME_TOGGLE = true)
+// -------------------------
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     if ($is_logged_in) {
         $user_id = $_SESSION['user']['id'];
         $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
@@ -25,6 +30,8 @@ if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
         // Update DB
         $update_stmt = $pdo->prepare("UPDATE users SET theme_mode = ? WHERE id = ?");
         $update_stmt->execute([$new_db_mode, $user_id]);
+
+        // Update sesi agar langsung berubah
         $_SESSION['user']['theme_mode'] = $new_db_mode;
 
     } else {
@@ -52,7 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($message) {
         try {
-            // ASUMSI: MENGGUNAKAN TABEL LAMA (user_id, message)
             $stmt = $pdo->prepare('INSERT INTO contacts (user_id, message) VALUES (:uid, :m)');
             $stmt->execute([':uid' => $user_id, ':m' => $message]);
             
@@ -74,7 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $history = [];
 if ($is_logged_in) {
     $user_id = $_SESSION['user']['id'];
-    // MENGAMBIL pesan user_id ini, termasuk kolom balasan yang baru kita tambahkan
     $historyStmt = $pdo->prepare("SELECT id, message, sent_at, reply_message, replied_at FROM contacts WHERE user_id = ? ORDER BY sent_at DESC");
     $historyStmt->execute([$user_id]);
     $history = $historyStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -133,13 +138,15 @@ if ($is_logged_in) {
         body.dark-mode .ticket-box .text-muted { color: #bbb !important; }
         body.dark-mode .user-message strong { color: #f5f5f5 !important; }
         
-        .admin-reply { margin-top: 15px; padding: 10px; border-left: 4px solid #198754; background-color: #d4edda; color: #155724; border-radius: 0 5px 5px 0; }
         body.dark-mode .admin-reply { background-color: #1c3d3a; color: #d1e7dd; border-color: #198754; }
         body.dark-mode .admin-reply strong { color: #d1e7dd !important; }
         body.dark-mode .alert-warning { background-color: #2a2a2a; color: #ffc107; border-color: #ffc107; }
+        
+        /* Admin Reply Colors (Light Mode) */
+        .admin-reply { margin-top: 15px; padding: 10px; border-left: 4px solid #198754; background-color: #d4edda; color: #155724; border-radius: 0 5px 5px 0; }
     </style>
 </head>
-<body class="<?= $theme === 'dark' ? 'dark-mode' : '' ?>">
+<body class="<?= $is_dark_mode ? 'dark-mode' : '' ?>">
 
 <header>
     <nav class="navbar navbar-expand-lg <?= $is_dark_mode ? 'navbar-dark bg-dark' : 'navbar-dark bg-primary' ?>">
@@ -163,11 +170,14 @@ if ($is_logged_in) {
                         <li class="nav-item"><a class="nav-link" href="register.php">Register</a></li>
                         <li class="nav-item"><a class="nav-link" href="login.php">Login</a></li>
                     <?php endif; ?>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
                 </ul>
             </div>
         </div>
@@ -188,7 +198,7 @@ if ($is_logged_in) {
 
             <?php if (!$is_logged_in): ?>
                 <div class="alert alert-warning text-center">
-                    Anda tidak login. Pesan akan dikirim sebagai **Tamu** (tidak dapat melacak balasan).
+                    Anda tidak login. Pesan akan dikirim sebagai Tamu.
                     <a href="login.php" class="alert-link">Login untuk melihat riwayat tiket.</a>
                 </div>
             <?php endif; ?>

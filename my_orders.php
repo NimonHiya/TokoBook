@@ -3,6 +3,14 @@ session_start();
 require_once __DIR__.'/db.php';
 require_once __DIR__.'/csrf.php'; 
 
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+const FEATURE_RATING_REVIEW = false;   // Menyembunyikan tombol "Beri Ulasan"
+const FEATURE_ORDER_TRACKING = false;  // Menyembunyikan tampilan resi/catatan pengiriman
+// **********************************************************
+
+
 // --- Login Check ---
 if (!isset($_SESSION['user'])) { 
     header('Location: login.php'); 
@@ -10,10 +18,10 @@ if (!isset($_SESSION['user'])) {
 }
 $user_id = $_SESSION['user']['id'];
 
-// --- Dark mode detection & Toggle Logic (Consistent Hybrid Logic) ---
+// --- Dark mode detection & Toggle Logic (KONDISIONAL) ---
 $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
 
     if (isset($pdo)) {
@@ -48,10 +56,13 @@ if ($flash_message) {
 }
 
 // LOGIKA BANTUAN UNTUK REVIEW (Untuk menentukan apakah tombol ulasan muncul)
-function check_review_status($pdo, $order_id, $book_id, $user_id) {
-    $review_exists_stmt = $pdo->prepare('SELECT 1 FROM reviews WHERE order_id = :oid AND book_id = :bid AND user_id = :uid');
-    $review_exists_stmt->execute([':oid' => $order_id, ':bid' => $book_id, ':uid' => $user_id]);
-    return $review_exists_stmt->fetch(PDO::FETCH_COLUMN);
+// Dibuat kondisional, tetapi fungsi harus tetap didefinisikan jika fitur dihidupkan
+if (FEATURE_RATING_REVIEW) {
+    function check_review_status($pdo, $order_id, $book_id, $user_id) {
+        $review_exists_stmt = $pdo->prepare('SELECT 1 FROM reviews WHERE order_id = :oid AND book_id = :bid AND user_id = :uid');
+        $review_exists_stmt->execute([':oid' => $order_id, ':bid' => $book_id, ':uid' => $user_id]);
+        return $review_exists_stmt->fetch(PDO::FETCH_COLUMN);
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -167,11 +178,15 @@ function check_review_status($pdo, $order_id, $book_id, $user_id) {
                     <?php if (isset($_SESSION['user']) && $_SESSION['user']['role']==='admin'): ?>
                         <li class="nav-item"><a class="nav-link" href="admin/dashboard.php">Admin</a></li>
                     <?php endif; ?>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    
                     <li class="nav-item"><a class="nav-link" href="logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                 </ul>
             </div>
@@ -202,8 +217,11 @@ function check_review_status($pdo, $order_id, $book_id, $user_id) {
             <?php else: ?>
                 <div class="order-list">
                     <?php foreach($rows as $r): 
-                        $has_reviewed = check_review_status($pdo, $r['id'], $r['book_id'], $user_id);
-                        $shipping_details = $r['shipping_note'] ? htmlspecialchars($r['shipping_note']) : 'Catatan pengiriman belum ada.';
+                        // Pengecekan Review hanya jika fitur aktif
+                        $has_reviewed = FEATURE_RATING_REVIEW ? check_review_status($pdo, $r['id'], $r['book_id'], $user_id) : false;
+                        
+                        // Detail Pengiriman hanya jika fitur aktif
+                        $shipping_details = FEATURE_ORDER_TRACKING && $r['shipping_note'] ? htmlspecialchars($r['shipping_note']) : 'Catatan pengiriman belum ada.';
                         
                         // Logika Badge
                         $badge_class = 'bg-secondary';
@@ -224,8 +242,8 @@ function check_review_status($pdo, $order_id, $book_id, $user_id) {
                                 </div>
                                 <div>
                                     <span class="badge <?= $badge_class ?>" 
-                                          title="<?= ($r['status'] === 'shipped' && $r['shipping_note']) ? $shipping_details : ''; ?>"
-                                          data-bs-toggle="<?= ($r['status'] === 'shipped' && $r['shipping_note']) ? 'tooltip' : ''; ?>"
+                                          title="<?= (FEATURE_ORDER_TRACKING && $r['status'] === 'shipped' && $r['shipping_note']) ? $shipping_details : ''; ?>"
+                                          data-bs-toggle="<?= (FEATURE_ORDER_TRACKING && $r['status'] === 'shipped' && $r['shipping_note']) ? 'tooltip' : ''; ?>"
                                           data-bs-placement="top">
                                         <?php echo htmlspecialchars(ucfirst($r['status'])); ?>
                                     </span>
@@ -265,22 +283,26 @@ function check_review_status($pdo, $order_id, $book_id, $user_id) {
                                         <span class="text-success small">Menunggu Admin Selesaikan</span>
 
                                     <?php elseif ($r['status'] === 'selesai'): ?>
-                                        <div class="d-flex gap-2 justify-content-end">
-                                            <?php if ($has_reviewed): ?>
-                                                <span class="badge bg-secondary">Sudah Diulas</span>
-                                            <?php else: ?>
-                                                <a href="review_form.php?order_id=<?php echo $r['id']; ?>&book_id=<?php echo $r['book_id']; ?>" 
-                                                   class="btn btn-sm btn-warning text-dark">
-                                                    Beri Ulasan
-                                                </a>
-                                            <?php endif; ?>
-                                        </div>
+                                        <?php if (FEATURE_RATING_REVIEW): ?>
+                                            <div class="d-flex gap-2 justify-content-end">
+                                                <?php if ($has_reviewed): ?>
+                                                    <span class="badge bg-secondary">Sudah Diulas</span>
+                                                <?php else: ?>
+                                                    <a href="review_form.php?order_id=<?php echo $r['id']; ?>&book_id=<?php echo $r['book_id']; ?>" 
+                                                       class="btn btn-sm btn-warning text-dark">
+                                                        Beri Ulasan
+                                                    </a>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endif; ?>
                                         
+                                    <?php else: ?>
+                                        N/A
                                     <?php endif; ?>
                                 </div>
                             </div>
                             
-                            <?php if ($r['status'] === 'shipped' && !empty($r['shipping_note'])): ?>
+                            <?php if (FEATURE_ORDER_TRACKING && $r['status'] === 'shipped' && !empty($r['shipping_note'])): ?>
                                 <div class="shipping-note-box mt-3 small text-start">
                                     <strong class="text-primary">Catatan Pengiriman:</strong>
                                     <span class="text-muted"><?= $shipping_details; ?></span>
@@ -311,11 +333,13 @@ function check_review_status($pdo, $order_id, $book_id, $user_id) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // Inisialisasi Tooltips (untuk menampilkan shipping_note saat status 'shipped')
+        // Inisialisasi Tooltips (hanya jika fitur aktif)
+        <?php if (FEATURE_ORDER_TRACKING): ?>
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
           return new bootstrap.Tooltip(tooltipTriggerEl)
         })
+        <?php endif; ?>
     });
 </script>
 </body>

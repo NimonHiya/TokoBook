@@ -2,18 +2,19 @@
 session_start();
 require_once __DIR__ . '/db.php';
 
-// --- Login Check ---
-if (!isset($_SESSION['user'])){ 
-    header('Location: login.php'); 
-    exit; 
-}
-$user_id = $_SESSION['user']['id'];
+// --- Global Feature Toggles ---
+// **********************************************************
+const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
+// **********************************************************
+
 
 // --- Dark mode detection & Toggle Logic ---
-$is_logged_in = true; // Sudah pasti login
+$is_logged_in = isset($_SESSION['user']); // Sudah pasti login di halaman ini, tapi kita jaga
+$user_id = $_SESSION['user']['id'];
 $current_db_mode = $_SESSION['user']['theme_mode'] ?? 0;
 
-if (isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
+// LOGIKA PHP UNTUK TOGGLE DIHAPUS JIKA FITUR DIMATIKAN
+if (FEATURE_THEME_TOGGLE && isset($_GET['toggle_theme']) && $_GET['toggle_theme'] === '1') {
     // Logika Database: Toggle theme_mode di tabel users
     $new_db_mode = ($current_db_mode == 0) ? 1 : 0; 
 
@@ -181,11 +182,15 @@ if ($cart){
                     <?php if (isset($_SESSION['user']) && $_SESSION['user']['role']==='admin'): ?>
                         <li class="nav-item"><a class="nav-link" href="admin/dashboard.php">Admin</a></li>
                     <?php endif; ?>
+                    
+                    <?php if (FEATURE_THEME_TOGGLE): ?>
                     <li class="nav-item">
                         <a href="?toggle_theme=1" class="nav-link toggle-btn" title="Toggle Dark/Light Mode">
                             <?= $is_dark_mode ? '☀️' : '🌙' ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    
                     <li class="nav-item"><a class="nav-link" href="logout.php">Logout (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a></li>
                 </ul>
             </div>
@@ -242,11 +247,6 @@ if ($cart){
                             <h5 class="d-inline-block">Total Keseluruhan: <span class="text-success">Rp **<?php echo number_format($total, 2, ',', '.'); ?>**</span></h5>
                         </div>
 
-                        <?php 
-                        // Catatan: Asumsi file csrf.php dan fungsi csrf_input_field() sudah ada
-                        // require_once __DIR__ . '/csrf.php'; 
-                        ?>
-                        
                         <form method="post" action="checkout.php" class="mt-4">
                             <h4 class="mb-3 text-secondary">Detail Pengiriman</h4>
                             <div class="mb-3">
@@ -261,7 +261,10 @@ if ($cart){
                                 </select>
                             </div>
                             
-                            <?php if (function_exists('csrf_input_field')) { echo csrf_input_field(); } ?>
+                            <?php 
+                            // Asumsi Anda akan memasukkan file csrf.php atau memiliki fungsi di tempat lain
+                            if (function_exists('csrf_input_field')) { echo csrf_input_field(); } 
+                            ?>
                             
                             <button type="submit" class="btn btn-primary w-100 btn-lg">PROSES CHECKOUT</button>
                         </form>

@@ -149,7 +149,7 @@ try {
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link" href="../index.php">Home</a></li>
-                    <li class="nav-item"><a class="nav-link" href="../about.php">About</a></li>
+                    <!-- <li class="nav-item"><a class="nav-link" href="../about.php">About</a></li> -->
                     <li class="nav-item"><a class="nav-link" href="../contact.php">Contact</a></li>
                     <li class="nav-item"><a class="nav-link" href="../cart.php">Cart</a></li>
                     <li class="nav-item"><a class="nav-link active" href="dashboard.php">Admin</a></li>
@@ -179,11 +179,11 @@ try {
             <li class="nav-item"><a class="nav-link" href="users.php">Pengguna</a></li>
             <li class="nav-item"><a class="nav-link" href="orders.php">Pesanan</a></li>
             <li class="nav-item"><a class="nav-link" href="report.php">Buat Laporan (CSV)</a></li>
-            <li class="nav-item"><a class="nav-link" href="about_edit.php">Edit Tentang Kami</a></li>
+            <!-- <li class="nav-item"><a class="nav-link" href="about_edit.php">Edit Tentang Kami</a></li> -->
             <li class="nav-item">
                 <a class="nav-link" href="contacts.php">
                     Pesan Kontak 
-                    <span id="contact-badge" class="badge bg-danger ms-1" style="display:none;"></span>
+                    <!-- <span id="contact-badge" class="badge bg-danger ms-1" style="display:none;"></span> -->
                 </a>
             </li>
         </ul>

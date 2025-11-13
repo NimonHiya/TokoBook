@@ -81,7 +81,7 @@ if (FEATURE_ABOUT_CONTENT) {
 // PAGINATION & FETCH BOOKS (Hanya jika fitur aktif)
 // -------------------------
 if (FEATURE_PRODUCT_LISTING) {
-    $items_per_page = 4;
+    $items_per_page = 2;
     $current_page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
 
     $sql_count = 'SELECT COUNT(id) FROM books';
@@ -129,13 +129,9 @@ if (FEATURE_PRODUCT_LISTING) {
         }
         .navbar-brand { font-weight: bold; }
         .about-content { line-height: 1.6; }
-        .book-card { height: 100%; 
-            /* Tambahkan styling card untuk dark mode */
-            <?php if ($is_dark_mode): ?>
-            background-color: #1e1e1e;
-            color: white;
-            border-color: #333;
-            <?php endif; ?>
+        .book-card { 
+            height: 100%;
+            /* Styling per-mode ditangani oleh kelas tambahan .dark-mode-card pada elemen card */
         }
         .book-img { height: 250px; width: 100%; object-fit: cover; }
         .about-img {

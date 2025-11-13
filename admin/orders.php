@@ -6,7 +6,7 @@ require_once __DIR__.'/../db.php';
 // **********************************************************
 const FEATURE_THEME_TOGGLE = false;    // Menyembunyikan tombol ☀️/🌙
 const FEATURE_SEARCH_FILTER = false;   // Menyembunyikan form pencarian/filter
-const FEATURE_ORDER_TRACKING = false;  // Menyembunyikan modal pengiriman dan tampilan resi
+const FEATURE_ORDER_TRACKING = true;  // Menyembunyikan modal pengiriman dan tampilan resi
 // **********************************************************
 
 

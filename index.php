@@ -3,12 +3,13 @@ session_start();
 require_once __DIR__ . '/db.php';
 
 // --- Global Feature Toggles ---
-// **********************************************************
+
 const FEATURE_THEME_TOGGLE = false; 
 const FEATURE_SEARCH_FILTER = false; 
 const FEATURE_RATING_REVIEW = false;
 const FEATURE_WISHLIST = false; 
-// **********************************************************
+const FEATURE_ADD_TO_CART = true; 
+
 
 
 // --- DARK MODE LOGIC START ---
@@ -55,25 +56,21 @@ $theme = $is_dark_mode ? 'dark' : 'light';
 
 // --- DARK MODE LOGIC END ---
 
-// --- Helper function untuk bintang (DIBUAT KONDISIONAL) ---
+// --- Helper function untuk bintang (Hanya didefinisikan jika fitur aktif) ---
 if (FEATURE_RATING_REVIEW) {
     function display_stars($rating) {
         $stars = '';
         $full_stars = floor($rating);
         
         for ($i = 1; $i <= 5; $i++) {
-            if ($i <= $full_stars) {
-                $stars .= '★'; 
-            } else {
-                $stars .= '☆'; 
-            }
+            $stars .= ($i <= $full_stars) ? '★' : '☆';
         }
         return $stars;
     }
 }
 
 
-// --- Input pencarian, filter, dan sorting (Dipertahankan di PHP agar SQL tidak error) ---
+// --- Input pencarian, filter, dan sorting ---
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 $category_id = isset($_GET['category_id']) && $_GET['category_id'] !== '' ? intval($_GET['category_id']) : null;
 $min_price = isset($_GET['min_price']) && $_GET['min_price'] !== '' ? floatval($_GET['min_price']) : null;
@@ -97,50 +94,25 @@ $where = [];
 $params = [];
 
 if (FEATURE_SEARCH_FILTER) { // Bungkus filter logic
-    if ($q) {
-        $where[] = 'b.title LIKE :q';
-        $params[':q'] = '%' . $q . '%';
-    }
-    if ($category_id) {
-        $where[] = 'b.category_id = :cid';
-        $params[':cid'] = $category_id;
-    }
-    if ($min_price !== null) {
-        $where[] = 'b.price >= :minp';
-        $params[':minp'] = $min_price;
-    }
-    if ($max_price !== null) {
-        $where[] = 'b.price <= :maxp';
-        $params[':maxp'] = $max_price;
-    }
+    if ($q) { $where[] = 'b.title LIKE :q'; $params[':q'] = '%' . $q . '%'; }
+    if ($category_id) { $where[] = 'b.category_id = :cid'; $params[':cid'] = $category_id; }
+    if ($min_price !== null) { $where[] = 'b.price >= :minp'; $params[':minp'] = $min_price; }
+    if ($max_price !== null) { $where[] = 'b.price <= :maxp'; $params[':maxp'] = $max_price; }
 }
 
 $whereSql = count($where) ? ' WHERE ' . implode(' AND ', $where) : '';
+$orderBySql = 'ORDER BY b.id DESC';
 
-// --- Logika Sorting SQL ---
-$orderBySql = 'ORDER BY b.id DESC'; // Default (date_desc)
-
-if (FEATURE_RATING_REVIEW) { // Hanya izinkan sorting rating jika fitur rating aktif
+if (FEATURE_RATING_REVIEW) { 
     switch ($sort_by) {
-        case 'rating_desc':
-            $orderBySql = 'ORDER BY avg_rating DESC, b.id DESC';
-            break;
-        case 'price_asc':
-            $orderBySql = 'ORDER BY b.price ASC, b.id DESC';
-            break;
-        case 'price_desc':
-            $orderBySql = 'ORDER BY b.price DESC, b.id DESC';
-            break;
-        case 'title_asc':
-            $orderBySql = 'ORDER BY b.title ASC, b.id DESC';
-            break;
-        case 'date_desc':
-        default:
-            $orderBySql = 'ORDER BY b.id DESC';
-            break;
+        case 'rating_desc': $orderBySql = 'ORDER BY avg_rating DESC, b.id DESC'; break;
+        case 'price_asc': $orderBySql = 'ORDER BY b.price ASC, b.id DESC'; break;
+        case 'price_desc': $orderBySql = 'ORDER BY b.price DESC, b.id DESC'; break;
+        case 'title_asc': $orderBySql = 'ORDER BY b.title ASC, b.id DESC'; break;
+        default: $orderBySql = 'ORDER BY b.id DESC'; break;
     }
 } else {
-    $orderBySql = 'ORDER BY b.id DESC'; // Default jika sorting rating dimatikan
+    $orderBySql = 'ORDER BY b.id DESC';
 }
 
 
@@ -150,7 +122,6 @@ $totalBooks = 0;
 $totalPages = 1;
 
 if (isset($pdo)) {
-    // Hitung total
     $countSql = 'SELECT COUNT(b.id) FROM books b' . $whereSql;
     $countStmt = $pdo->prepare($countSql);
     $countStmt->execute($params);
@@ -330,9 +301,10 @@ body.dark-mode .filter-container {
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link active" href="index.php">Home</a></li>
-                    <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
+                    
                     <li class="nav-item"><a class="nav-link" href="contact.php">Contact</a></li>
                     <?php if (isset($_SESSION['user'])): ?>
+                        <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
                         <li class="nav-item"><a class="nav-link" href="cart.php">Cart</a></li>
                         <li class="nav-item"><a class="nav-link" href="my_orders.php">Pesanan Saya</a></li>
                         <?php if (FEATURE_WISHLIST): ?>
@@ -451,6 +423,7 @@ body.dark-mode .filter-container {
         <?php if ($totalBooks === 0): ?>
              <div class="alert alert-info text-center border-0">Tidak ada buku ditemukan dengan kriteria tersebut.</div>
         <?php else: ?>
+            <!-- <p class="text-muted mb-3">Menampilkan **<?= count($books); ?>** dari **<?= $totalBooks; ?>** buku.</p> -->
             <div class="row row-cols-1 row-cols-md-3 g-4">
                 <?php foreach ($books as $b): ?>
                     <div class="col">
@@ -479,10 +452,31 @@ body.dark-mode .filter-container {
                                 <?php endif; ?>
 
                                 <p class="mb-1">Penulis: <?= htmlspecialchars($b['author']); ?></p>
+                                
+                                <p class="mb-1">
+                                    Stok: 
+                                    <span class="fw-bold text-<?= $b['stock'] > 0 ? 'success' : 'danger'; ?>">
+                                        <?= $b['stock']; ?>
+                                    </span>
+                                </p>
+
                                 <p class="fw-bold text-success">Rp <?= number_format($b['price'], 2, ',', '.'); ?></p>
                                 
                                 <div class="btn-group d-flex gap-2 mt-auto">
                                     <a href="book_detail.php?id=<?= $b['id']; ?>" class="btn btn-outline-primary btn-sm">Detail</a>
+                                    
+                                    <?php if ($is_logged_in): ?>
+                                        <?php if ($b['stock'] > 0): ?>
+                                        <form method="post" action="cart.php" class="d-inline">
+                                            <input type="hidden" name="book_id" value="<?= $b['id']; ?>">
+                                            <input type="hidden" name="qty" value="1">
+                                            <button type="submit" class="btn btn-success btn-sm">🛍️</button>
+                                        </form>
+                                        <?php else: ?>
+                                        <button class="btn btn-secondary btn-sm" disabled>Stok Habis</button>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+
                                     <?php if (isset($_SESSION['user']) && $_SESSION['user']['role'] === 'admin'): ?>
                                         <a href="admin/book_edit.php?id=<?= $b['id']; ?>" class="btn btn-outline-secondary btn-sm">Edit</a>
                                         <a href="admin/book_delete.php?id=<?= $b['id']; ?>" class="btn btn-outline-danger btn-sm" onclick="return confirm('Yakin ingin menghapus buku ini?')">Hapus</a>

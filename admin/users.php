@@ -115,6 +115,9 @@ $users = $pdo->query('SELECT id,username,email,role,created_at FROM users ORDER 
             border-radius: 8px;
             overflow: hidden;
         }
+        .bg-success{
+            background-color: <?= $is_dark_mode ? ' #ffffff' : '#1f1f1f'; ?> !important;
+        }
         
         @media (max-width: 991.98px) { .sidebar { min-height: auto; } }
     </style>
@@ -192,11 +195,11 @@ $users = $pdo->query('SELECT id,username,email,role,created_at FROM users ORDER 
                                             <td><?php echo $u['id']; ?></td>
                                             <td><?php echo htmlspecialchars($u['username']); ?></td>
                                             <td><?php echo htmlspecialchars($u['email']); ?></td>
-                                            <td>
+                                            <!-- <td>
                                                 <span class="badge <?= $u['role'] === 'admin' ? 'bg-danger' : 'bg-success'; ?>">
                                                     <?php echo htmlspecialchars(ucfirst($u['role'])); ?>
                                                 </span>
-                                            </td>
+                                            </td> -->
                                             <td><?php echo htmlspecialchars($u['created_at']); ?></td>
                                             <td>
                                                 <?php if ($u['id'] !== $user_id): // Jangan biarkan admin menghapus dirinya sendiri ?>
